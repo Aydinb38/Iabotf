@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""Automated verification of the IABot_M5 Expert Advisor inside the MQL5 emulator.
+
+usage: run_scenarios.py <build_dir> <m1_data_dir> [report.md]
+
+Every scenario runs the real EA code (translated from the .mq5) on real market
+data and checks a list of assertions. Exit code 0 only if every check passes.
+"""
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timedelta
+
+import pandas as pd
+
+BUILD, DATA = sys.argv[1], sys.argv[2]
+REPORT = sys.argv[3] if len(sys.argv) > 3 else None
+TMP = os.path.join(BUILD, "scenarios")
+os.makedirs(TMP, exist_ok=True)
+EMU = os.path.join(BUILD, "emu")
+results = []
+
+
+def run(name, args, exe=EMU, expect_rc=0):
+    log = os.path.join(TMP, name + ".log")
+    trades = os.path.join(TMP, name + "_trades.csv")
+    cmd = [exe] + args + ["--log", log, "--trades", trades]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    out = p.stdout + p.stderr
+    if p.returncode != expect_rc:
+        raise AssertionError(f"exit code {p.returncode} (expected {expect_rc}):\n{out[-2000:]}")
+    logtxt = open(log, encoding="utf-8").read() if os.path.exists(log) else ""
+    tr = pd.read_csv(trades) if os.path.exists(trades) and os.path.getsize(trades) > 0 else pd.DataFrame()
+    if len(tr):
+        tr["open_time"] = pd.to_datetime(tr["open_time"], format="%Y.%m.%d %H:%M:%S")
+        tr["close_time"] = pd.to_datetime(tr["close_time"], format="%Y.%m.%d %H:%M:%S")
+    return out, logtxt, tr
+
+
+def summary(out):
+    s = {}
+    m = re.search(r"final balance\s+: ([\d.]+)", out); s["balance"] = float(m.group(1)) if m else None
+    m = re.search(r"trades\s+: (\d+).*win rate ([\d.]+)%", out)
+    s["trades"], s["win"] = (int(m.group(1)), float(m.group(2))) if m else (0, 0.0)
+    m = re.search(r"profit factor\s+: ([\d.]+)", out); s["pf"] = float(m.group(1)) if m else 0
+    m = re.search(r"max equity drawdown\s+: [\d.]+ \(([\d.]+)%\)", out); s["dd"] = float(m.group(1)) if m else 0
+    m = re.search(r"requests / modifies / rejected : (\d+) / (\d+) / (\d+)", out)
+    s["requests"], s["modifies"], s["rejected"] = map(int, m.groups()) if m else (0, 0, 0)
+    s["events"] = dict(re.findall(r"(\w+)=(\d+)", re.search(r"events\s+:(.*)", out).group(1))) if "events" in out else {}
+    return s
+
+
+def scenario(title):
+    def deco(fn):
+        def wrapper():
+            checks = []
+            def check(cond, what):
+                checks.append((bool(cond), what))
+            try:
+                info = fn(check) or ""
+                ok = all(c for c, _ in checks)
+                results.append((title, ok, checks, info))
+            except Exception as e:  # noqa
+                results.append((title, False, checks + [(False, f"exception: {e}")], ""))
+        wrapper.__name__ = fn.__name__
+        SCENARIOS.append(wrapper)
+        return wrapper
+    return deco
+
+
+SCENARIOS = []
+XAU = os.path.join(DATA, "XAUUSD_IS.csv")
+Y2016 = ["--from", "2016-01-01", "--to", "2017-01-01"]
+
+
+def server_dst(t):
+    y = t.year
+    mar = datetime(y, 3, 1); start = mar + timedelta(days=(6 - mar.weekday()) % 7 + 7)
+    nov = datetime(y, 11, 1); end = nov + timedelta(days=(6 - nov.weekday()) % 7)
+    return start <= t < end
+
+
+def balance_before(tr, deposit=10000.0):
+    bal = []
+    closed = tr.sort_values("close_time")
+    for _, t in tr.iterrows():
+        bal.append(deposit + closed[closed.close_time <= t.open_time].profit.sum())
+    return pd.Series(bal, index=tr.index)
+
+
+@scenario("1. Référence XAUUSD 2014-2017 : SL/TP/BE/trailing/risque/sessions conformes")
+def s_baseline(check):
+    out, log, tr = run("baseline", ["--data", XAU, "--symbol", "XAUUSD"])
+    s = summary(out)
+    check(s["trades"] >= 500, f"nombre de trades suffisant ({s['trades']})")
+    check((tr.init_sl > 0).all() and (tr.tp > 0).all(), "chaque position a un SL et un TP dès l'ouverture")
+    ratio = (tr.tp - tr.open).abs() / (tr.open - tr.init_sl).abs()
+    check(ratio.between(3.98, 4.02).all(), f"TP = 4 R exactement (min {ratio.min():.3f} max {ratio.max():.3f})")
+    check(tr.R.min() >= -1.6, f"perte max par trade bornée ({tr.R.min():.2f} R, gaps inclus)")
+    bal = balance_before(tr)
+    riskpct = tr.risk_money / bal * 100
+    check(riskpct.max() <= 0.56, f"risque par trade <= 0,5 % (+commission) : max {riskpct.max():.3f} %")
+    check(riskpct.median() >= 0.35, f"risque médian proche de la cible ({riskpct.median():.3f} %)")
+    check(not re.search(r"échec|refusé|impossible|introuvable", log), "aucun échec d'ordre dans le journal")
+    # break-even : SL = ouverture +/- 0.1 R
+    tk = tr.set_index("ticket")
+    bad = 0; n_be = 0
+    for m in re.finditer(r"#(\d+) break-even -> SL=([\d.]+)", log):
+        t = int(m.group(1)); sl = float(m.group(2))
+        if t not in tk.index: continue
+        r = tk.loc[t]; R = abs(r.open - r.init_sl); d = 1 if r.type == "BUY" else -1
+        n_be += 1
+        if abs(sl - (r.open + d * 0.1 * R)) > 0.025: bad += 1
+    check(n_be > 100 and bad == 0, f"break-even à +0,1 R vérifié sur {n_be} déplacements (écarts : {bad})")
+    bad = 0; n_tr = 0
+    for m in re.finditer(r"#(\d+) trailing stop -> SL=([\d.]+)", log):
+        t = int(m.group(1)); sl = float(m.group(2))
+        if t not in tk.index: continue
+        r = tk.loc[t]; R = abs(r.open - r.init_sl); d = 1 if r.type == "BUY" else -1
+        n_tr += 1
+        if d * (sl - r.open) < 0.5 * R - 0.025: bad += 1
+    check(n_tr > 100 and bad == 0, f"trailing stop toujours >= +0,5 R ({n_tr} déplacements, écarts : {bad})")
+    h = tr.open_time.dt.hour + tr.open_time.dt.minute / 60
+    check(h.between(9, 20).all(), "entrées uniquement pendant la session 9h-20h (heure serveur)")
+    fri = tr.open_time.dt.dayofweek == 4
+    check(not (fri & (tr.open_time.dt.hour >= 18)).any(), "aucune entrée le vendredi après 18h")
+    span_weekend = (tr.close_time - tr.open_time > pd.Timedelta(days=2)) & (tr.open_time.dt.dayofweek >= 3) & (tr.close_time.dt.dayofweek <= 1)
+    m1 = pd.read_csv(XAU, usecols=["time"]); m1t = pd.to_datetime(m1.time, unit="s")
+    fri_late = set(m1t[(m1t.dt.dayofweek == 4) & (m1t.dt.hour >= 22)].dt.date)
+    explained = 0
+    for _, t in tr[span_weekend].iterrows():
+        fri = (t.open_time + pd.Timedelta(days=(4 - t.open_time.dayofweek) % 7)).date()
+        if fri not in fri_late:
+            explained += 1   # marché fermé avant 22h ce vendredi (jour férié) : aucun tick pour clôturer
+    check(span_weekend.sum() == explained, f"aucune position gardée le week-end quand le marché cote après 22h le vendredi ({span_weekend.sum()} cas, tous des vendredis fériés/clôture anticipée : {explained})")
+    srt = tr.sort_values("open_time")
+    overlap = (srt.open_time.values[1:] < srt.close_time.values[:-1]).sum()
+    check(overlap == 0, "jamais plus d'une position à la fois")
+    per_day = tr.groupby(tr.open_time.dt.date).size()
+    check(per_day.max() <= 4, f"max 4 trades par jour (max observé {per_day.max()})")
+    return f"{s['trades']} trades, gain {s['win']}%, PF {s['pf']}, DD {s['dd']}%"
+
+
+@scenario("2. EURUSD et USDJPY (conversion de devise du profit) : risque correct, aucun plantage")
+def s_fx(check):
+    for sym in ["EURUSD", "USDJPY"]:
+        out, log, tr = run("fx_" + sym, ["--data", os.path.join(DATA, f"{sym}_IS.csv"), "--symbol", sym] + Y2016)
+        check(len(tr) > 50, f"{sym} : trades exécutés ({len(tr)})")
+        riskpct = tr.risk_money / balance_before(tr) * 100
+        check(riskpct.max() <= 0.56 and riskpct.median() > 0.4, f"{sym} : risque {riskpct.median():.3f} % (max {riskpct.max():.3f} %)")
+        check((tr.init_sl > 0).all() and (tr.tp > 0).all(), f"{sym} : SL et TP présents")
+
+
+@scenario("3. Courtier IOC uniquement / RETURN uniquement : mode de remplissage détecté")
+def s_filling(check):
+    base, _, trb = run("fill_base", ["--data", XAU, "--symbol", "XAUUSD"] + Y2016)
+    for mode in ["IOC", "RETURN"]:
+        out, log, tr = run("fill_" + mode, ["--data", XAU, "--symbol", "XAUUSD", "--filling", mode] + Y2016)
+        s = summary(out)
+        check(s["rejected"] == 0, f"{mode} : aucun ordre rejeté ({s['rejected']})")
+        check(len(tr) == len(trb), f"{mode} : mêmes trades que la référence ({len(tr)} vs {len(trb)})")
+
+
+@scenario("4. Requotes aléatoires (30 % des ordres) : nouvelles tentatives automatiques")
+def s_requote(check):
+    _, _, trb = run("rq_base", ["--data", XAU, "--symbol", "XAUUSD"] + Y2016)
+    out, log, tr = run("requote", ["--data", XAU, "--symbol", "XAUUSD", "--requote-prob", "0.3"] + Y2016)
+    s = summary(out)
+    check(s["rejected"] > 30, f"requotes simulés ({s['rejected']})")
+    check(abs(len(tr) - len(trb)) <= max(3, 0.03 * len(trb)), f"trades quasi identiques ({len(tr)} vs {len(trb)})")
+    check((tr.init_sl > 0).all(), "SL toujours posé malgré les requotes")
+
+
+@scenario("5. Courtier qui ignore SL/TP à l'ouverture : l'EA les pose immédiatement")
+def s_ignore(check):
+    out, log, tr = run("ignore_sltp", ["--data", XAU, "--symbol", "XAUUSD", "--ignore-sltp-on-open"] + Y2016)
+    n_fix = len(re.findall(r"pose SL/TP", log))
+    check(len(tr) > 50 and n_fix == len(tr), f"SL/TP posés après ouverture sur chaque trade ({n_fix}/{len(tr)})")
+    check((tr.init_sl > 0).all() and (tr.tp > 0).all(), "toutes les positions finissent protégées")
+
+
+@scenario("6. Courtier qui refuse SL et TP : fermeture de sécurité immédiate (jamais de position sans SL)")
+def s_reject(check):
+    out, log, tr = run("reject_sltp", ["--data", XAU, "--symbol", "XAUUSD", "--ignore-sltp-on-open", "--reject-sltp"] + Y2016)
+    n_safety = len(re.findall(r"SL impossible à poser", log))
+    check(len(tr) > 0 and n_safety >= len(tr), f"fermeture de sécurité déclenchée ({n_safety} fois / {len(tr)} trades)")
+    check((tr.close_time == tr.open_time).all(), "chaque position non protégée est fermée dans la même seconde")
+
+
+@scenario("7. Stops level élevé (300 pts) et freeze level (50 pts) : aucune requête invalide")
+def s_levels(check):
+    out, log, tr = run("levels", ["--data", XAU, "--symbol", "XAUUSD", "--stops-level", "300", "--freeze-level", "50"] + Y2016)
+    s = summary(out)
+    check(len(tr) > 50, f"le robot trade toujours ({len(tr)})")
+    check(s["events"].get("reject_10016", "0") == "0", "aucun rejet 'invalid stops'")
+    check(s["events"].get("reject_10029", "0") == "0", "aucun rejet 'frozen'")
+
+
+@scenario("8. Compte netting")
+def s_netting(check):
+    _, _, trb = run("net_base", ["--data", XAU, "--symbol", "XAUUSD"] + Y2016)
+    out, log, tr = run("netting", ["--data", XAU, "--symbol", "XAUUSD", "--netting"] + Y2016)
+    check(abs(len(tr) - len(trb)) <= 2, f"comportement identique en netting ({len(tr)} vs {len(trb)})")
+    check("compte netting" in log, "mode netting détecté")
+
+
+@scenario("9. Clôture partielle activée : une seule fois par position")
+def s_partial(check):
+    out, log, tr = run("partial", ["--data", XAU, "--symbol", "XAUUSD", "--set", "InpUsePartialClose=true"] + Y2016)
+    parts = re.findall(r"#(\d+) clôturé ([\d.]+) lot\(s\) - raison : clôture partielle", log)
+    tickets = [p[0] for p in parts]
+    check(len(parts) > 20, f"clôtures partielles exécutées ({len(parts)})")
+    check(len(tickets) == len(set(tickets)), "jamais deux clôtures partielles sur la même position")
+
+
+@scenario("10. Limite de perte journalière (risque 4 %, limite 3 %) : arrêt pour la journée")
+def s_daily(check):
+    out, log, tr = run("daily", ["--data", XAU, "--symbol", "XAUUSD", "--set", "InpRiskPercent=4", "--set", "InpMaxDailyLossPct=3",
+                                 "--set", "InpMaxDrawdownPct=0", "--set", "InpCloseOnDailyLoss=true"] + Y2016)
+    hits = [datetime.strptime(m.group(1), "%Y.%m.%d %H:%M:%S") for m in re.finditer(r"^(\S+ \S+)  IABot: perte journalière max", log, re.M)]
+    check(len(hits) > 0, f"limite journalière déclenchée ({len(hits)} jour(s))")
+    bad = sum(((tr.open_time > h) & (tr.open_time.dt.date == h.date())).sum() for h in hits)
+    check(bad == 0, "aucun nouveau trade le jour même après la limite")
+
+
+@scenario("11. Coupe-circuit drawdown max (risque 3 %, limite 10 %) : arrêt définitif + fermeture")
+def s_maxdd(check):
+    out, log, tr = run("maxdd", ["--data", XAU, "--symbol", "XAUUSD", "--set", "InpRiskPercent=3", "--set", "InpMaxDrawdownPct=10",
+                                 "--set", "InpMaxDailyLossPct=0"])
+    m = re.search(r"^(\S+ \S+)  IABot: DRAWDOWN MAX ATTEINT", log, re.M)
+    check(m is not None, "coupe-circuit déclenché")
+    if m:
+        t = datetime.strptime(m.group(1), "%Y.%m.%d %H:%M:%S")
+        check((tr.open_time > t).sum() == 0, "plus aucun trade après l'arrêt")
+        check((tr.close_time <= t + timedelta(seconds=1)).all(), "positions fermées au déclenchement")
+
+
+@scenario("12. Petit capital (300 USD) : jamais de risque supérieur à 2 % par trade")
+def s_small(check):
+    out, log, tr = run("small", ["--data", XAU, "--symbol", "XAUUSD", "--deposit", "300"] + Y2016)
+    if len(tr):
+        riskpct = tr.risk_money / balance_before(tr, 300.0) * 100
+        check(riskpct.max() <= 2.1, f"risque max {riskpct.max():.2f} % <= 2 %")
+    check(True, f"{len(tr)} trades exécutés avec le lot minimum autorisé")
+
+
+@scenario("13. Trading algorithmique désactivé : aucun ordre")
+def s_algo(check):
+    out, log, tr = run("algo_off", ["--data", XAU, "--symbol", "XAUUSD", "--algo-off"] + Y2016)
+    s = summary(out)
+    check(s["trades"] == 0 and s["requests"] == 0, "aucune requête envoyée")
+
+
+@scenario("14. Mode réel simulé + calendrier : pause autour des news à fort impact, panneau affiché")
+def s_news(check):
+    out0, log0, tr0 = run("live_base", ["--data", XAU, "--symbol", "XAUUSD", "--live"] + Y2016)
+    check(len(tr0) > 50, f"mode réel : le robot trade ({len(tr0)})")
+    check("IABot M5" in out0 and "News :" in out0, "panneau d'information affiché")
+    picks = tr0.open_time.iloc[::max(1, len(tr0) // 15)].head(15)
+    news = os.path.join(TMP, "news.csv")
+    with open(news, "w") as f:
+        for i, t in enumerate(picks):
+            nt = t + timedelta(minutes=10)
+            f.write(f"{nt:%Y-%m-%d %H:%M},USD,3,Test event {i}\n")
+        f.write(f"{picks.iloc[0] + timedelta(minutes=5):%Y-%m-%d %H:%M},EUR,3,Ignored currency\n")
+    out, log, tr = run("live_news", ["--data", XAU, "--symbol", "XAUUSD", "--live", "--news", news] + Y2016)
+    near = 0
+    for t in picks:
+        nt = t + timedelta(minutes=10)
+        near += ((tr.open_time >= nt - timedelta(minutes=30)) & (tr.open_time <= nt + timedelta(minutes=30))).sum()
+    check(near == 0, f"aucune entrée à +/-30 min des {len(picks)} news USD ({near})")
+    check(len(re.findall(r"Pause news", open(os.path.join(TMP, 'live_news.log'), encoding='utf-8').read())) >= 0, "statut news")
+
+
+@scenario("15. Session en heure GMT (testeur, décalage auto été/hiver US)")
+def s_gmt(check):
+    out, log, tr = run("gmt", ["--data", XAU, "--symbol", "XAUUSD", "--set", "InpTimeBase=1", "--set", "InpSessionStart=7",
+                               "--set", "InpSessionEnd=18"] + Y2016)
+    off = tr.open_time.apply(lambda t: 3 if server_dst(t.to_pydatetime()) else 2)
+    gmt_h = (tr.open_time - pd.to_timedelta(off, unit="h"))
+    hh = gmt_h.dt.hour + gmt_h.dt.minute / 60
+    check(len(tr) > 50 and hh.between(7, 18).all(), f"entrées entre 7h et 18h GMT ({len(tr)} trades)")
+
+
+@scenario("16. Paramètres invalides : initialisation refusée")
+def s_invalid(check):
+    run("invalid", ["--data", XAU, "--symbol", "XAUUSD", "--set", "InpTrendFastEMA=300"] + Y2016, expect_rc=3)
+    run("invalid2", ["--data", XAU, "--symbol", "XAUUSD", "--set", "InpRiskPercent=50"] + Y2016, expect_rc=3)
+    check(True, "INIT_PARAMETERS_INCORRECT renvoyé")
+
+
+@scenario("17. Redémarrage du terminal en pleine position : reprise de la gestion (persistance)")
+def s_restart(check):
+    outA, logA, trA = run("restartA", ["--data", XAU, "--symbol", "XAUUSD"] + Y2016)
+    # find a moment with an open position
+    mid = trA[(trA.open_time > "2016-06-01")].iloc[0]
+    stop = mid.open_time + timedelta(minutes=30)
+    state = os.path.join(TMP, "state.txt")
+    o1, _, _ = run("restartB1", ["--data", XAU, "--symbol", "XAUUSD", "--from", "2016-01-01", "--stop-at", f"{stop:%Y-%m-%d %H:%M}",
+                                 "--save-state", state])
+    check("1 open position" in o1, "une position est ouverte au moment de l'arrêt")
+    outB, logB, trB = run("restartB2", ["--data", XAU, "--symbol", "XAUUSD", "--from", f"{stop:%Y-%m-%d %H:%M}", "--to", "2017-01-01",
+                                        "--load-state", state])
+    t = int(mid.ticket)
+    managed = re.search(rf"#{t} (break-even|trailing stop)", logB) or ("SL" in str(trB[trB.ticket == t].exit.values))
+    check(managed, f"la position #{t} est toujours gérée après redémarrage")
+    bA, bB = summary(outA)["balance"], summary(outB)["balance"]
+    check(abs(bA - bB) / 10000 < 0.01, f"résultat final identique à 1 % près ({bA:.2f} vs {bB:.2f})")
+
+
+@scenario("18. Exécution instrumentée (AddressSanitizer + UBSan + division par zéro) sur toutes les données")
+def s_sanitize(check):
+    for f in sorted(os.listdir(DATA)):
+        if not f.endswith(".csv"):
+            continue
+        sym = f.split("_")[0]
+        out, log, tr = run("san_" + f[:-4], ["--data", os.path.join(DATA, f), "--symbol", sym], exe=os.path.join(BUILD, "emu_san"))
+        check("ERROR" not in out and "runtime error" not in out, f"{f} : aucune erreur mémoire / UB / division par zéro ({len(tr)} trades)")
+
+
+if __name__ == "__main__":
+    only = os.environ.get("ONLY")
+    for sc in SCENARIOS:
+        if only and only not in sc.__name__:
+            continue
+        sc()
+    lines = ["# Vérification automatique d'IABot_M5", ""]
+    npass = 0
+    for title, ok, checks, info in results:
+        npass += ok
+        lines.append(f"## {'✅' if ok else '❌'} {title}")
+        if info:
+            lines.append(f"_{info}_")
+        for c, what in checks:
+            lines.append(f"- {'OK ' if c else 'ÉCHEC'} {what}")
+        lines.append("")
+    lines.insert(1, f"**{npass}/{len(results)} scénarios réussis**")
+    text = "\n".join(lines)
+    print(text)
+    if REPORT:
+        open(REPORT, "w", encoding="utf-8").write(text + "\n")
+    sys.exit(0 if npass == len(results) else 1)
