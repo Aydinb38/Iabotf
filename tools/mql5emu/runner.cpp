@@ -4,7 +4,7 @@
 #include EA_SOURCE
 #include "emu_impl.h"
 
-struct SymPreset { const char* name; const char* base; const char* quote; int digits; double contract; double spread; double comm; double swl; double sws; };
+struct SymPreset { const char* name; const char* base; const char* quote; int digits; double contract; double spread; double comm; double swl; double sws; double qusd = 1.0; };
 static const SymPreset PRESETS[] = {
   // spread in points, commission per lot round trip (USD), swaps per lot per night (USD, conservative)
   {"XAUUSD", "XAU", "USD", 2, 100, 25, 7.0, -35.0, -5.0},
@@ -13,6 +13,14 @@ static const SymPreset PRESETS[] = {
   {"AUDUSD", "AUD", "USD", 5, 100000, 5, 7.0, -4.0, -3.0},
   {"USDCAD", "USD", "CAD", 5, 100000, 7, 7.0, -3.0, -4.0},
   {"USDJPY", "USD", "JPY", 3, 100000, 5, 7.0, -2.0, -10.0},
+  {"USDCHF", "USD", "CHF", 5, 100000, 7, 7.0, -2.0, -8.0},
+  {"NZDUSD", "NZD", "USD", 5, 100000, 8, 7.0, -4.0, -3.0},
+  // crosses: last field = USD value of 1 unit of the quote currency (approximation, only affects lot size)
+  {"EURJPY", "EUR", "JPY", 3, 100000, 9, 7.0, -6.0, -6.0, 0.0090},
+  {"EURCAD", "EUR", "CAD", 5, 100000, 13, 7.0, -6.0, -6.0, 0.76},
+  {"EURGBP", "EUR", "GBP", 5, 100000, 6, 7.0, -6.0, -6.0, 1.30},
+  {"EURCHF", "EUR", "CHF", 5, 100000, 9, 7.0, -6.0, -6.0, 1.02},
+  {"GBPJPY", "GBP", "JPY", 3, 100000, 17, 7.0, -6.0, -6.0, 0.0090},
 };
 
 static datetime parse_date(const std::string& s) {
@@ -24,7 +32,7 @@ static datetime parse_date(const std::string& s) {
 int main(int argc, char** argv) {
   std::string data, trades_out, equity_out, log_out; std::vector<std::pair<std::string, std::string>> sets;
   std::string from_s, to_s, stop_s, save_state, load_state; bool spread_set = false, comm_set = false, swap_set = false;
-  double spread = 0, comm = 0, swl = 0, sws = 0;
+  double spread = 0, comm = 0, swl = 0, sws = 0, quote_usd_opt = 0;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto next = [&]() -> std::string { if (i + 1 >= argc) { fprintf(stderr, "missing value for %s\n", a.c_str()); exit(2); } return argv[++i]; };
@@ -48,6 +56,7 @@ int main(int argc, char** argv) {
     else if (a == "--vmin") E.cfg.vmin = std::stod(next());
     else if (a == "--vstep") E.cfg.vstep = std::stod(next());
     else if (a == "--netting") E.cfg.hedging = false;
+    else if (a == "--quote-usd") quote_usd_opt = std::stod(next());
     else if (a == "--requote-prob") E.cfg.requote_prob = std::stod(next());
     else if (a == "--ignore-sltp-on-open") E.cfg.ignore_sltp_on_open = true;
     else if (a == "--reject-sltp") E.cfg.reject_sltp = true;
@@ -69,12 +78,13 @@ int main(int argc, char** argv) {
   bool found = false;
   for (auto& p : PRESETS) if (E.cfg.symbol == p.name) {
     found = true; E.cfg.base = p.base; E.cfg.quote = p.quote; E.cfg.digits = p.digits; E.cfg.contract = p.contract;
-    E.cfg.spread_points = p.spread; E.cfg.commission_rt = p.comm; E.cfg.swap_long = p.swl; E.cfg.swap_short = p.sws;
+    E.cfg.spread_points = p.spread; E.cfg.commission_rt = p.comm; E.cfg.swap_long = p.swl; E.cfg.swap_short = p.sws; E.cfg.quote_usd = p.qusd;
   }
   if (!found) { fprintf(stderr, "unknown symbol %s\n", E.cfg.symbol.c_str()); return 2; }
   if (spread_set) E.cfg.spread_points = spread;
   if (comm_set) E.cfg.commission_rt = comm;
   if (swap_set) { E.cfg.swap_long = swl; E.cfg.swap_short = sws; }
+  if (quote_usd_opt > 0) E.cfg.quote_usd = quote_usd_opt;
   for (auto& kv : sets) {
     auto it = InputReg::table().find(kv.first);
     if (it == InputReg::table().end()) { fprintf(stderr, "unknown input %s\n", kv.first.c_str()); return 2; }

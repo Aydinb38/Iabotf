@@ -262,7 +262,7 @@ struct EmuConfig {
   double deposit = 10000, leverage = 100; bool hedging = true; bool tester = true; int gmt_offset_live = 2; bool live_dst = true;
   double requote_prob = 0; bool ignore_sltp_on_open = false; bool reject_sltp = false; bool algo_allowed = true;
   long warmup_days = 30; datetime from = 0, to = 0; bool quiet = false; bool visual = false;
-  std::string news_file;
+  std::string news_file; double quote_usd = 1.0;
 };
 
 struct Emu {
@@ -291,11 +291,12 @@ struct Emu {
   double price_conv(double price_now) const {  // profit currency -> account currency (USD)
     if (cfg.quote == "USD") return 1.0;
     if (cfg.base == "USD") return price_now > 0 ? 1.0 / price_now : 0.0;
-    return 1.0;
+    return cfg.quote_usd;                        // crosses: fixed approximate conversion rate
   }
   double margin_rate(double price_now) const {
     if (cfg.base == "USD") return 1.0;
-    return price_now;
+    if (cfg.quote == "USD") return price_now;
+    return price_now * cfg.quote_usd;
   }
   double pos_profit(const EmuPos& p) const {
     double px = p.type == 0 ? tick.bid : tick.ask;

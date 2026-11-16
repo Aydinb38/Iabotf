@@ -1,0 +1,33 @@
+symbole,periode,mode,type,trades,gain_pct,PF,R_moyen,resultat_pct,dd_max_pct
+AUDUSD,2014-2017,forcé : vente,conception,710,46.2,0.8,-0.047,-14.99,15.03
+AUDUSD,2018 (jan-oct),forcé : vente,hors-échantillon,188,51.6,1.07,0.013,1.24,2.8
+AUDUSD,2026 (avr-sep),forcé : vente,hors-échantillon,109,44.0,0.66,-0.079,-4.32,5.69
+EURCAD,2014-2017,forcé : vente,conception,1005,50.4,1.01,0.005,1.8,10.02
+EURCAD,2018 (jan-oct),forcé : vente,hors-échantillon,192,48.4,0.94,-0.015,-1.4,4.69
+EURCHF,2014-2017,forcé : vente,conception,915,50.6,0.96,-0.01,-5.17,14.03
+EURCHF,2018 (jan-oct),forcé : vente,hors-échantillon,190,52.1,1.12,0.035,3.23,3.8
+EURGBP,2014-2017,forcé : vente,conception,560,45.9,0.87,-0.051,-14.12,15.16
+EURGBP,2018 (jan-oct),forcé : vente,hors-échantillon,190,48.9,0.91,-0.029,-2.83,6.55
+EURGBP,2026 (avr-sep),forcé : vente,hors-échantillon,110,48.2,0.67,-0.101,-5.71,6.7
+EURJPY,2014-2017,forcé : vente,conception,1004,50.4,1.04,0.01,5.15,8.06
+EURJPY,2018 (jan-oct),forcé : vente,hors-échantillon,187,51.9,1.02,0.006,0.51,3.67
+EURJPY,2026 (avr-sep),forcé : vente,hors-échantillon,109,43.1,0.86,-0.034,-1.83,3.71
+EURUSD,2014-2017,automatique (vente),conception,1005,53.0,1.19,0.056,31.1,5.97
+EURUSD,2018 (jan-oct),automatique (vente),hors-échantillon,192,56.2,1.25,0.073,7.15,4.28
+EURUSD,2026 (avr-sep),automatique (vente),hors-échantillon,109,52.3,1.14,0.034,1.86,3.27
+GBPJPY,2014-2017,forcé : vente,conception,1002,48.5,0.94,-0.017,-7.84,14.1
+GBPJPY,2018 (jan-oct),forcé : vente,hors-échantillon,188,49.5,0.97,-0.006,-0.96,6.58
+GBPUSD,2014-2017,automatique (vente),conception,1004,53.1,1.11,0.042,21.04,10.85
+GBPUSD,2018 (jan-oct),automatique (vente),hors-échantillon,190,51.1,1.22,0.079,7.59,4.19
+GBPUSD,2026 (avr-sep),automatique (vente),hors-échantillon,108,53.7,1.13,0.032,1.58,3.36
+NZDUSD,2014-2017,forcé : vente,conception,869,47.1,0.83,-0.037,-14.94,15.01
+NZDUSD,2018 (jan-oct),forcé : vente,hors-échantillon,190,51.6,1.0,0.001,0.01,3.23
+USDCAD,2014-2017,forcé : achat,conception,1004,47.5,0.9,-0.024,-11.21,13.66
+USDCAD,2018 (jan-oct),forcé : achat,hors-échantillon,191,51.3,1.27,0.053,5.1,2.52
+USDCAD,2026 (avr-sep),forcé : achat,hors-échantillon,108,47.2,0.72,-0.068,-3.76,5.6
+USDCHF,2014-2017,forcé : achat,conception,1001,51.0,1.04,0.013,6.1,11.5
+USDCHF,2018 (jan-oct),forcé : achat,hors-échantillon,190,48.9,0.91,-0.024,-2.45,6.01
+USDCHF,2026 (avr-sep),forcé : achat,hors-échantillon,110,57.3,1.21,0.04,2.22,2.6
+USDJPY,2014-2017,forcé : achat,conception,1002,51.6,0.99,-0.0,-0.59,6.45
+USDJPY,2018 (jan-oct),forcé : achat,hors-échantillon,191,52.4,0.9,-0.017,-1.7,2.81
+USDJPY,2026 (avr-sep),forcé : achat,hors-échantillon,109,59.6,0.9,-0.02,-1.11,3.35

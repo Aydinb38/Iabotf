@@ -82,6 +82,7 @@ input bool            InpCloseOnMaxDD     = true;              // Fermer les pos
 input bool            InpResetProtection  = false;             // Réarmer le robot après un arrêt drawdown
 input int             InpMaxTradesPerDay  = 4;                 // Trades max par jour (0 = illimité)
 input int             InpMaxConsecLosses  = 3;                 // Pertes consécutives max par jour (0 = off)
+input double          InpMaxVolatility    = 3.0;               // Pas de trade si ATR actuel > x fois l'ATR moyen (choc de volatilité, 0 = off)
 input int             InpMaxSpreadPoints  = 0;                 // Spread max en points (0 = automatique)
 input double          InpMaxSpreadPctSL   = 10.0;              // Spread max en % de la distance du SL
 input int             InpSlippagePoints   = 30;                // Glissement max (points)
@@ -112,6 +113,7 @@ int      g_hEmaFast        = INVALID_HANDLE;
 int      g_hEmaSlow        = INVALID_HANDLE;
 int      g_hATR            = INVALID_HANDLE;
 int      g_hRSI            = INVALID_HANDLE;
+int      g_hATRLong        = INVALID_HANDLE;
 int      g_hADX            = INVALID_HANDLE;
 
 bool     g_isTester        = false;
@@ -1340,6 +1342,16 @@ bool CanOpenNewTrade(const datetime signalBarTime, string &why)
       why = StringFormat("Hors session (%dh-%dh)", InpSessionStart, InpSessionEnd);
       return false;
      }
+   if(InpMaxVolatility > 0.0)
+     {
+      double atrNow = 0.0, atrLong = 0.0;
+      if(GetIndicatorValue(g_hATR, 0, 1, atrNow) && GetIndicatorValue(g_hATRLong, 0, 1, atrLong) && atrLong > 0.0 &&
+         atrNow > InpMaxVolatility * atrLong)
+        {
+         why = StringFormat("Choc de volatilité (ATR x%.1f la normale)", atrNow / atrLong);
+         return false;
+        }
+     }
    string info;
    if(IsNewsBlackout(now, info))
      {
@@ -1566,6 +1578,7 @@ int OnInit()
    g_hEmaSlow = iMA(_Symbol, InpTrendTF, InpTrendSlowEMA, 0, MODE_EMA, PRICE_CLOSE);
    g_hATR = iATR(_Symbol, InpTrendTF, InpATRPeriod);
    g_hRSI = iRSI(_Symbol, InpSignalTF, InpRSIPeriod, PRICE_CLOSE);
+   g_hATRLong = iATR(_Symbol, InpTrendTF, 240);
    if(InpTrendADXMin > 0)
       g_hADX = iADX(_Symbol, InpTrendTF, 14);
    if(g_hEmaFast == INVALID_HANDLE || g_hEmaSlow == INVALID_HANDLE || g_hATR == INVALID_HANDLE ||
@@ -1623,6 +1636,9 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_hATR);
    if(g_hRSI != INVALID_HANDLE)
       IndicatorRelease(g_hRSI);
+   if(g_hATRLong != INVALID_HANDLE)
+      IndicatorRelease(g_hATRLong);
+   g_hATRLong = INVALID_HANDLE;
    if(g_hADX != INVALID_HANDLE)
       IndicatorRelease(g_hADX);
    g_hEmaFast = INVALID_HANDLE;
