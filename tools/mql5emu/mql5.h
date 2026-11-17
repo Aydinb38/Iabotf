@@ -507,6 +507,7 @@ long PositionGetInteger(ENUM_POSITION_PROPERTY_INTEGER p);
 string PositionGetString(ENUM_POSITION_PROPERTY_STRING p);
 inline int OrdersTotal() { return 0; }
 bool HistorySelect(datetime from, datetime to);
+bool HistorySelectByPosition(long position_id);
 int HistoryDealsTotal();
 ulong HistoryDealGetTicket(int index);
 double HistoryDealGetDouble(ulong ticket, ENUM_DEAL_PROPERTY_DOUBLE p);

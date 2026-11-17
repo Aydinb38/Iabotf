@@ -640,6 +640,11 @@ bool HistorySelect(datetime from, datetime to) {
   for (size_t i = 0; i < E.deals.size(); i++) if (E.deals[i].time >= from && E.deals[i].time <= to) E.hist_sel.push_back(i);
   return true;
 }
+bool HistorySelectByPosition(long position_id) {
+  E.hist_sel.clear();
+  for (size_t i = 0; i < E.deals.size(); i++) if ((long)E.deals[i].position_id == position_id) E.hist_sel.push_back(i);
+  return true;
+}
 int HistoryDealsTotal() { return (int)E.hist_sel.size(); }
 ulong HistoryDealGetTicket(int index) {
   if (index < 0 || index >= (int)E.hist_sel.size()) return 0;

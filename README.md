@@ -1,217 +1,236 @@
-# IABot FX : robot de trading Forex M5 pour MetaTrader 5
+# IABot EURUSD : robot de trading autonome spécialisé EURUSD (MetaTrader 5, M5)
 
-Expert Advisor **entièrement automatique** pour le Forex, en unité de temps **M5**, sur **EURUSD et
-GBPUSD**. Une fois lancé, il :
+Expert Advisor **entièrement automatique**, spécialisé sur une seule paire : **EURUSD**. Une fois lancé,
+il fait tout seul :
 
-- surveille le marché du lundi au vendredi ;
-- prend **plusieurs trades par jour** ;
-- pose **immédiatement le Stop Loss et le Take Profit** de chaque trade ;
-- déplace le stop au **break-even** quand le trade est en gain ;
-- ferme les positions au bon moment ;
-- protège le capital avec des limites journalières et un coupe-circuit.
+- il analyse le marché et prend **plusieurs trades par jour** (environ 2,2 en moyenne) ;
+- il pose **immédiatement le Stop Loss et le Take Profit** de chaque trade ;
+- il déplace le stop au **break-even** et ferme les positions au bon moment ;
+- il **adapte son risque** à ses propres résultats récents, et sa mémoire survit aux redémarrages ;
+- il protège le capital avec des limites journalières, un coupe-circuit et des filtres de news, de
+  spread et de volatilité.
 
-> Fichier à installer : [`MQL5/Experts/IABot/IABot_FX_M5.mq5`](MQL5/Experts/IABot/IABot_FX_M5.mq5)
-> À lancer sur **deux graphiques : EURUSD M5 et GBPUSD M5**.
+> Fichier à installer : [`MQL5/Experts/IABot/IABot_EURUSD.mq5`](MQL5/Experts/IABot/IABot_EURUSD.mq5)
+> Graphique : **EURUSD, M5**. Compte **hedging** recommandé.
 
 ---
 
 ## ⚠️ À lire avant tout
 
 Aucun robot ne peut garantir des gains, et aucun ne rend milliardaire. Celui-ci ne fait pas exception.
-Chaque chiffre ci-dessous vient d'un test sur des **données minute réelles**, avec spread, commission et
-swaps, et sur des périodes **jamais utilisées** pour régler le robot. Les performances passées ne
-préjugent pas des performances futures. Commencez **sur un compte démo**, puis en réel avec un petit
-risque.
+Tous les chiffres ci-dessous viennent du **vrai code du robot**, exécuté minute par minute sur
+**14 ans de données réelles d'EURUSD (2005-2018)** puis sur 2026, avec spread, commission et swaps.
+Les performances passées ne préjugent pas des performances futures. Commencez **sur un compte démo**.
 
-### Résultats (EURUSD + GBPUSD ensemble, 10 000 $, 0,5 % de risque par trade)
+### Résultats (10 000 $ au départ, risque 0,4 % par trade)
 
-| Profil | 2014-2017 (conception) | 2018 jan-oct (jamais vue) | 2026 avr-sep (jamais vue) |
-|---|---|---|---|
-| **Taux de réussite élevé** (défaut) | **60,8 %** de trades gagnants · PF 1,08 · **+30,9 %** · DD 10,1 % | **63,4 %** · PF 1,19 · **+12,7 %** · DD 4,9 % | **60,2 %** · PF 1,22 · **+6,1 %** · DD 5,3 % |
-| **Rendement maximal** | 52,8 % · PF 1,12 · **+50,6 %** · DD 12,4 % | 55,3 % · PF 1,29 · **+20,2 %** · DD 5,1 % | 53,4 % · PF 1,16 · **+4,4 %** · DD 5,8 % |
+| Période | Trades | Trades/jour | % gagnants | Profit factor | Résultat | Drawdown max |
+|---|---:|---:|---:|---:|---:|---:|
+| **2005 → 2018** (14 ans) | 7 860 | 2,2 | 53,9 % | 1,16 | **+158 %** (10 000 $ → 25 848 $) | 13,9 % |
+| **2026** (avr. → sept.) | 243 | 2,2 | 51,0 % | 1,06 | **+1,1 %** | 4,7 % |
 
-Fréquence : environ **2,5 à 3 trades par jour** (1,2 à 1,5 par paire). PF (profit factor) = gains bruts
-÷ pertes brutes ; DD = baisse maximale du capital. Détail par paire :
-[`results/backtest_results_fx.csv`](results/backtest_results_fx.csv).
+- **13 années positives sur 14** (seule 2013 est négative : -4 %).
+- Environ **+7 % par an** en moyenne (composé), avec une baisse maximale de 14 %.
+- Le détail année par année est dans
+  [`results/backtest_results_eurusd.csv`](results/backtest_results_eurusd.csv).
+
+| Année | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2016 | 2017 | 2018* | 2026* |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Résultat ($) | +1 670 | +1 532 | +42 | +717 | +114 | +1 648 | +38 | +1 962 | -406 | +3 725 | +2 334 | +345 | +435 | +1 692 | +106 |
+
+\* 2018 : janvier-août ; 2026 : avril-septembre.
 
 ---
 
-## 1. Ce que nous avons cherché, et ce qui marche vraiment
+## 1. Comment le robot a été construit
 
-**24 heures sur 24, 18 paires.** Nous avons mesuré le mouvement moyen de 18 paires Forex sur
-**2 106 créneaux horaires** couvrant toute la journée, sur 4 ans de données minute. Les frais sont
-réalistes et augmentent la nuit, quand les spreads s'élargissent.
-- Seuls 13 créneaux restent positifs chaque année **et** hors échantillon après les frais.
-- Presque tous concernent la **séance européenne**.
-- La nuit, aucun effet n'est exploitable : le seul effet fort (AUDNZD) se produit juste après minuit,
-  quand le spread est le plus large.
-- En séance américaine, aucun effet ne résiste hors échantillon.
+### Ce que nous avons testé
 
-**Stratégies classiques.** Repli dans la tendance, retour à la moyenne, cassures de range,
-scalping de nuit, Donchian et tendance H4 ou journalière : **aucune ne bat les frais** de façon fiable
-en M5. Les objectifs (2 à 5 pips) sont trop petits face au spread et à la commission (1 à 3 pips).
+1. **Une vraie IA d'apprentissage automatique.**
+   - Le modèle (gradient boosting et régression logistique) utilise 26 informations : heure, jour,
+     rendements sur 5 min à 24 h, RSI, tendances, volatilité, position dans la journée, range
+     asiatique, veille, semaine.
+   - Il est **réentraîné chaque mois** sur les 3 années précédentes, puis testé sur la période
+     suivante qu'il n'a jamais vue, de 2008 à 2018.
+   - **Résultat** : il prédit la direction d'EURUSD un peu mieux que le hasard, chaque année (AUC
+     0,54, soit environ 58 % de bonnes directions sur ses prédictions les plus confiantes). Mais
+     l'avantage ne vaut que **0,5 à 1 pip**, et **les frais l'annulent** : en trading réel simulé, il
+     perd 0,3 à 0,7 pip par trade.
+   - Une variante restreinte gagne 8 années sur 11, mais elle change de résultat selon la durée
+     d'entraînement : elle n'est pas assez fiable pour votre argent.
+   - **Elle n'est donc pas utilisée pour trader.** Un « filtre IA » qui ne prédit rien de rentable
+     n'apporterait que l'illusion de l'intelligence.
+2. **Les 24 heures de la journée**, sur 18 paires (2 106 créneaux). Seule la séance européenne
+   montre un avantage qui résiste aux frais et au temps. La nuit, le spread rend tout effet
+   inexploitable.
+3. **8 familles de stratégies classiques** (repli dans la tendance, retour à la moyenne, cassures,
+   scalping, etc.). Aucune ne bat les frais de façon fiable en M5.
 
-**Intelligence artificielle.** Nous avons entraîné des modèles (régression logistique et gradient
-boosting) pour prédire si un trade allait gagner. Ils utilisaient 12 indicateurs : RSI, tendances H1 et
-journalière, volatilité, mouvement de la séance, position dans le range asiatique, heure, jour…
-Résultat : **aucun pouvoir prédictif**. L'AUC est d'environ 0,50, c'est-à-dire le niveau d'un tirage à
-pile ou face, aussi bien en validation croisée qu'en 2018 et 2026. Nous ne l'avons donc **pas** ajouté :
-un « filtre IA » qui ne prédit rien donnerait l'illusion de l'intelligence sans rien apporter.
+### Ce que le robot sait
 
-**L'effet retenu.** L'**euro et la livre baissent face au dollar pendant la séance européenne**. Ce
-phénomène est documenté dans la recherche académique (Ranaldo 2009 ; Breedon & Ranaldo 2013) : une
-devise tend à se déprécier pendant les heures de bureau de sa propre place financière. Il est positif
-chaque année de 2014 à 2017, puis en 2018 et en 2026. Il est **absent** des paires croisées (EURJPY,
-EURCAD, EURGBP, GBPJPY…), où les frais sont plus élevés.
+- **L'euro baisse face au dollar pendant la séance européenne.** C'est un effet documenté par la
+  recherche académique (Ranaldo 2009 ; Breedon & Ranaldo 2013) : une devise tend à se déprécier
+  pendant les heures de bureau de sa propre place financière. Nous l'avons vérifié sur **14 ans**,
+  et les années 2005-2013 n'avaient jamais servi à le régler.
+- **Les meilleures entrées sont les rebonds courts en M5**, quand le RSI(3) dépasse 70 : le robot vend
+  plus haut.
+- **Plusieurs entrées espacées d'une heure** font mieux qu'une seule : sur 14 ans, le gain annuel
+  moyen double, et la pire année est moins mauvaise.
+- **Couper le risque de moitié quand les 60 derniers trades sont globalement perdants** fait passer
+  le drawdown maximal de 18,2 % à 13,9 %. En contrepartie, le gain passe de +203 % à +158 % sur
+  14 ans. Le robot détecte ainsi lui-même les périodes où l'effet faiblit. Vous pouvez désactiver
+  cette adaptation pour viser plus de rendement, avec plus de risque.
 
-> **Pourquoi pas de trades la nuit ?** Le robot est actif 24 h/24 du lundi au vendredi : il surveille,
-> gère et protège en continu. Mais il **n'ouvre des positions que pendant la fenêtre où un avantage a
-> été mesuré**. Trader aux autres heures ferait plus de trades, mais perdrait de l'argent. Le panneau
-> affiche à tout moment l'heure de la prochaine fenêtre.
-
-## 2. Règles du robot
+## 2. Règles de trading
 
 | Étape | Règle (bougies clôturées uniquement, aucun repaint) |
 |---|---|
-| Paires | **EURUSD** et **GBPUSD**, en **vente** (mode automatique). |
-| Fenêtre d'entrée | **10 h - 13 h, heure serveur GMT+2/+3** (en pleine séance européenne), du lundi au vendredi. |
-| Entrée (M5) | Sur un **rebond court terme** : RSI(3) > 70, pour vendre plus haut. |
-| Plusieurs trades | Jusqu'à **3 trades par jour et par paire**, une position à la fois. Un nouveau trade peut partir dès que le précédent est clôturé. |
-| Stop Loss | **3 × ATR(14) H1**, soit environ 20 à 40 pips selon la volatilité. Cette distance définit « 1 R ». |
-| Take Profit | Profil *taux de réussite* : **1 R**. Profil *rendement* : **3 R**. Toujours posé à l'ouverture. |
-| Break-even | Profil *taux de réussite* : à **+0,5 R**. Profil *rendement* : à **+1 R**. Le stop passe à l'entrée + 0,1 R. |
-| Sortie forcée | À **15 h**, juste avant les statistiques américaines (15 h 30). Aucune position la nuit, donc aucun swap à payer. |
+| Sens | **Vente** d'EURUSD (euro faible en séance européenne). |
+| Fenêtre d'entrée | **10 h - 13 h, heure serveur GMT+2/+3**, du lundi au vendredi. |
+| Signal | Rebond court terme M5 : **RSI(3) > 70**. |
+| Plusieurs trades | Jusqu'à **3 positions par jour**, simultanées, avec **au moins 1 h** entre deux entrées. |
+| Stop Loss | **3 × ATR(14) H1**, soit environ 20 à 40 pips, adapté à la volatilité. Cette distance définit « 1 R ». |
+| Take Profit | **3 R**, posé à l'ouverture. |
+| Break-even | Profil *rendement* (défaut) : à **+1 R**. Profil *taux de réussite* : à **+0,5 R**. Le stop passe à l'entrée + 0,1 R. |
+| Sortie forcée | À **15 h**, avant les statistiques américaines (15 h 30). Aucune position la nuit, donc aucun swap. |
+| Risque | **0,4 %** du capital par trade, réduit à **0,2 %** quand le bilan des 60 derniers trades est négatif. |
 
-### Pourquoi environ 60 % de trades gagnants, et pas 80 % ?
+Hors de la fenêtre, le robot reste actif : il gère les positions, surveille les protections et affiche
+l'heure de la prochaine fenêtre de trading.
 
-Le taux de réussite se règle facilement : il suffit de rapprocher le Take Profit. Avec un TP à 0,3 R,
-on dépasse 70 % de trades gagnants, mais **le compte perd de l'argent**, parce que les petits gains ne
-couvrent plus les pertes. Nous avons testé 36 combinaisons stop / TP / break-even. Le profil par
-défaut est le réglage qui maximise le taux de réussite **tout en restant positif sur les trois
-périodes**.
+### Taux de réussite ou rendement ?
+
+| Profil (2005-2018) | % gagnants | Résultat | DD max | Années positives | 2026 |
+|---|---:|---:|---:|---:|---:|
+| **Rendement** (défaut) | 53,9 % | **+158 %** | 13,9 % | **13/14** | +1,1 % |
+| Taux de réussite | **58,3 %** | +123 % | 14,3 % | 11/14 | +0,2 % |
+
+Le profil « taux de réussite » gagne plus souvent, mais **rapporte moins**. Le profil « rendement »
+fait mieux sur tous les critères d'argent : c'est pourquoi il est réglé par défaut. On peut pousser le
+taux de réussite au-delà de 60 % avec un TP très proche, mais les tests montrent qu'alors le compte
+**perd** de l'argent.
 
 ## 3. Protections du capital
 
-- **Risque fixe par trade** (0,5 % du solde). Le lot est calculé à partir de la vraie perte au SL
-  (`OrderCalcProfit`), puis vérifié contre la marge libre et les limites de volume du courtier.
+- **Risque fixe et adaptatif par trade**. Le lot est calculé à partir de la vraie perte au SL
+  (`OrderCalcProfit`), puis vérifié contre la marge libre et les limites du courtier.
 - **Perte journalière max** (3 %) : plus aucun trade jusqu'au lendemain.
-- **Coupe-circuit drawdown** (15 % depuis le plus haut) : le robot ferme ses positions et s'arrête
+- **Coupe-circuit drawdown** (20 % depuis le plus haut) : le robot ferme ses positions et s'arrête
   **définitivement**. Pour le relancer, passez « Réarmer le robot » à `true`.
 - **Choc de volatilité** : aucun trade si l'ATR dépasse 3 fois sa moyenne (Brexit, décision surprise
   d'une banque centrale…).
-- **Filtre news** : pause de 30 min avant et après chaque annonce à fort impact (EUR, GBP, USD), via le
-  calendrier économique intégré à MT5. Il fonctionne en réel ; MT5 ne fournit pas le calendrier dans le
+- **Filtre news** : pause de 30 min avant et après chaque annonce à fort impact sur l'EUR ou l'USD,
+  via le calendrier économique de MT5. Il fonctionne en réel ; MT5 ne fournit pas le calendrier dans le
   testeur.
 - **Filtre de spread** : maximum 2 pips, et au plus 10 % du stop.
-- **Sécurité SL** : si le courtier ignore le SL/TP à l'ouverture, le robot les pose aussitôt. S'il ne
-  peut pas les poser, il **ferme la position**. Il ne laisse jamais une position sans stop.
-- **Compatibilité courtiers** : comptes hedging et netting. Le mode de remplissage (FOK/IOC/RETURN) est
-  détecté automatiquement. Le robot réessaie après un requote, respecte le stops level et le freeze
-  level, et attend 30 s après un refus du serveur.
-- **Redémarrage sans risque** : l'état de chaque position est sauvegardé dans les variables globales du
-  terminal. Après un redémarrage du PC ou du VPS, le robot reprend la gestion de la position.
+- **Sécurité SL** : si le courtier ignore le SL/TP, le robot les pose aussitôt. S'il ne peut pas, il
+  **ferme la position**. Jamais de position sans stop.
+- **Compatibilité courtiers** :
+  - modes de remplissage FOK/IOC/RETURN détectés automatiquement ;
+  - nouvelles tentatives après un requote ;
+  - stops level et freeze level respectés ;
+  - en compte **netting**, une seule position à la fois, car ce type de compte n'en permet pas
+    plusieurs.
+- **Redémarrage sans risque** : la gestion des positions et la mémoire des 60 derniers trades sont
+  sauvegardées dans les variables globales du terminal.
 - **Panneau d'information** sur le graphique :
-  - biais, RSI, fenêtre ouverte ou fermée et **prochaine fenêtre de trading** ;
-  - prochaine news, spread ;
-  - trades du jour, résultat du jour, drawdown ;
-  - position en cours en R, et ce que fait le robot.
+  - fenêtre ouverte ou fermée, et prochaine fenêtre de trading ;
+  - RSI, spread, prochaine news ;
+  - mémoire et risque adaptatif ;
+  - trades et résultat du jour, drawdown ;
+  - positions en cours en R, et ce que fait le robot.
 
 ## 4. Installation (5 minutes)
 
 1. Dans MetaTrader 5 : **Fichier → Ouvrir le dossier des données**.
-2. Copiez `IABot_FX_M5.mq5` dans `MQL5/Experts/IABot/`.
+2. Copiez `IABot_EURUSD.mq5` dans `MQL5/Experts/IABot/`.
 3. Ouvrez **MetaEditor** (touche F4), ouvrez le fichier et cliquez sur **Compiler** (F7).
    Le résultat attendu est `0 errors, 0 warnings`.
-4. Ouvrez un graphique **EURUSD en M5** et glissez **IABot_FX_M5** dessus. Faites de même sur un
-   graphique **GBPUSD en M5**. Une seule instance par paire.
+4. Ouvrez un graphique **EURUSD en M5** et glissez **IABot_EURUSD** dessus.
 5. Dans l'onglet *Commun*, cochez **« Autoriser le trading algorithmique »**, puis activez le bouton
-   **Algo Trading** dans la barre d'outils. Le panneau apparaît en haut à gauche.
-6. Le terminal doit rester allumé du lundi au vendredi : un **VPS** est fortement conseillé.
+   **Algo Trading**. Le panneau apparaît en haut à gauche.
+6. Laissez le terminal allumé du lundi au vendredi : un **VPS** est fortement conseillé.
 
 > **Heure du serveur.** La fenêtre 10 h-13 h suppose un courtier en GMT+2 l'hiver et GMT+3 l'été, ce
-> qui est le cas de la grande majorité des courtiers MT5. Vérifiez : la bougie de minuit de votre
-> graphique doit correspondre à la clôture de New York (23 h à Paris). Sinon, réglez
-> **« Référence horaire » = Heure GMT**, la fenêtre sur **8 h-11 h** et la sortie à **13 h**.
+> qui est le cas de la grande majorité des courtiers MT5. Vérifiez : la bougie de minuit doit
+> correspondre à la clôture de New York (23 h à Paris). Sinon, réglez **« Référence horaire » = Heure
+> GMT**, la fenêtre sur **8 h-11 h** et la sortie à **13 h**.
 
-**Capital** : un stop de 20 à 40 pips vaut 2 à 4 $ pour 0,01 lot. Avec 0,5 % de risque, **environ
-800 $ suffisent** pour un calcul de lot exact. **Compte** : un compte ECN à bas coûts est
-indispensable. Avec 1,3 pip de frais au lieu de 1,0 sur EURUSD, l'avantage fond nettement.
+- **Compte** : ECN à bas coûts (spread + commission ≤ 1 pip sur EURUSD). C'est indispensable, car
+  l'avantage du robot se compte en fractions de pip.
+- **Capital** : environ 1 000 $ minimum pour respecter exactement 0,4 % de risque avec des lots de
+  0,01.
 
 ## 5. Paramètres principaux
 
 | Paramètre | Défaut | Rôle |
 |---|---|---|
-| Profil de sortie | Taux de réussite élevé | Ou « Rendement maximal », ou « Personnalisé » (utilise TP et break-even ci-dessous). |
-| Risque par trade (%) | 0,5 | Perte maximale si le SL est touché. 1 % au grand maximum. |
-| Fenêtre d'entrée | 10 h - 13 h | Heure serveur. |
-| Heure de sortie forcée | 15 h | Avant les statistiques américaines. |
-| Trades max par jour | 3 | Par paire. |
+| Profil de sortie | Rendement maximal | Ou « Taux de réussite élevé », ou « Personnalisé ». |
+| Risque par trade (%) | 0,4 | Jusqu'à 1 % pour les plus agressifs. Le drawdown augmente en proportion. |
+| Risque adaptatif | oui (60 trades, × 0,5) | Réduit le risque après une mauvaise série. Désactivé : +203 % au lieu de +158 % sur 14 ans, mais DD 18 % au lieu de 14 %. |
+| Positions simultanées max / trades max par jour | 3 / 3 | Fréquence. |
+| Minutes entre deux entrées | 60 | Espacement. |
+| Fenêtre d'entrée / sortie | 10 h - 13 h / 15 h | Heure serveur. |
 | Vente si RSI > | 70 | Niveau du rebond M5. |
-| Stop loss = ATR x | 3,0 | Distance du stop (1 R). |
-| Sens des trades | Automatique | Ventes EURUSD et GBPUSD. Les sens forcés sur d'autres paires n'ont **pas** été validés. |
-| Commission par lot | 0 | Indiquez la commission aller-retour de votre compte (ex. 7) pour un calcul du lot exact. |
+| Stop loss = ATR x / TP = R x | 3,0 / 3,0 | SL et TP. |
+| Perte journalière / drawdown max | 3 % / 20 % | Coupe-circuits. |
+| Commission par lot | 0 | Indiquez votre commission aller-retour (ex. 7) pour un calcul du lot exact. |
 
-## 6. Comment le robot a été vérifié
+## 6. Vérification du robot
 
 MetaTrader ne fonctionne pas sous Linux. Nous avons donc construit un **émulateur MQL5**
 (`tools/mql5emu/`) qui compile et exécute **le fichier `.mq5` lui-même** :
 
-1. **Contrôle de compatibilité MQL5** et **compilation stricte**, tout avertissement étant traité comme
-   une erreur. Elle vérifie les signatures de l'API MQL5, les conversions avec perte, les variables
-   masquées, les comparaisons signé/non signé, la concaténation chaîne + nombre et l'écriture dans un
-   paramètre. Le contrôleur a été testé en injectant 10 erreurs typiques : toutes ont été détectées.
+1. **Compilation stricte**, tout avertissement étant traité comme une erreur. Elle vérifie la
+   compatibilité MQL5, les signatures de l'API, les conversions avec perte, les variables masquées et
+   les formats. Le contrôleur a été testé en injectant 10 erreurs typiques : toutes ont été détectées.
 2. **Moteur de backtest tick par tick** fidèle à MT5 :
    - indicateurs calculés avec les formules de MetaQuotes ;
-   - stops level, freeze level, marge, swaps ;
-   - historique des transactions, variables globales, calendrier.
-3. **18 scénarios automatiques** (rapport :
-   [`tools/verify/last_report_fx.md`](tools/verify/last_report_fx.md)) :
-   - SL et TP sur 100 % des trades, avec un TP exact ;
-   - break-even vérifié sur chaque déplacement ;
-   - risque réel ≤ 0,5 %, entrées seulement de 10 h à 13 h, sortie à 15 h ;
+   - stops level, marge, swaps ;
+   - historique, variables globales, calendrier.
+3. **19 scénarios automatiques** (rapport :
+   [`tools/verify/last_report_eurusd.md`](tools/verify/last_report_eurusd.md)) :
+   - SL et TP sur 100 % des trades ;
+   - break-even exact, risque ≤ 0,4 % ;
+   - fenêtre horaire et sortie à 15 h respectées ;
+   - 3 positions max, espacées d'au moins 1 h ;
    - requotes, courtier IOC ou RETURN seulement, SL refusé par le courtier, stops level élevé ;
    - compte netting et petit capital ;
-   - perte journalière, coupe-circuit drawdown et filtre news ;
-   - redémarrage avec une position ouverte ;
+   - perte journalière, coupe-circuit et filtre news ;
+   - redémarrage en pleine position ;
+   - **risque adaptatif** : bascule, retour à la normale et risque exact à chaque entrée ;
    - AddressSanitizer et UBSan sur toutes les données.
-4. **Validation croisée** : le moteur de recherche (Python) et l'EA réel dans l'émulateur donnent les
-   mêmes chiffres.
-
-Défauts trouvés et corrigés grâce à ces tests :
-- des modifications refusées étaient renvoyées à chaque tick avec un stops level élevé ;
-- le jour du Brexit, une entrée était prise avec un stop de 633 pips : d'où l'ajout du filtre de choc
-  de volatilité.
 
 **Ce qui reste à faire de votre côté.** Compilez dans MetaEditor (F7), seule vérification impossible
-ici. Lancez ensuite un test dans le **Testeur de stratégie MT5** avec les données de votre courtier
-(EURUSD, M5, mode « Chaque tick basé sur les ticks réels »). Puis faites tourner le robot **au moins un
-mois sur un compte démo**.
+ici. Faites un test dans le **Testeur de stratégie MT5** (EURUSD, M5, « Chaque tick basé sur les ticks
+réels ») avec les données de votre courtier. Puis faites tourner le robot **au moins un mois sur un
+compte démo**.
 
 ```bash
-tools/data/fetch_data.sh        # télécharge les données minute publiques dans data/m1
-tools/verify/verify_all.sh      # compile les EA dans l'émulateur + scénarios
-build/fx/emu --data data/m1/EURUSD_IS.csv --symbol EURUSD --trades trades.csv    # backtest libre
-build/fx/emu ... --set InpProfile=1 --set InpRiskPercent=1.0                     # changer un paramètre
+tools/data/fetch_data.sh        # télécharge les données minute publiques (dont EURUSD 2005-2018)
+tools/verify/verify_all.sh      # compile les robots dans l'émulateur + scénarios
+build/eurusd/emu --data data/m1/EURUSD_ALL.csv --symbol EURUSD --trades trades.csv   # backtest 14 ans
 ```
 
 ## 7. Limites connues
 
-- Avantage **réel mais petit** : environ +0,02 à +0,05 R par trade. Un mois négatif est normal ; sur
-  les tests, de la moitié aux deux tiers des mois sont positifs selon la période.
+- Avantage **réel mais modeste** : environ +0,04 R par trade. Des mois et des années faibles arrivent
+  (2007, 2009, 2011 proches de zéro ; 2013 à -4 %).
 - Très **sensible aux frais** du courtier.
+- Un effet de marché peut s'affaiblir avec le temps. Le risque adaptatif amortit ces périodes, mais
+  surveillez les résultats.
 - Le filtre news ne fonctionne pas dans le testeur MT5 : c'est une limite de MetaTrader.
-- La recherche est faite sur 2014-2018 et 2026. Un effet de marché peut s'affaiblir avec le temps :
-  surveillez les résultats et réduisez le risque si le robot décroche durablement.
 
 ## 8. Contenu du dépôt
 
 ```
-MQL5/Experts/IABot/IABot_FX_M5.mq5   ← robot Forex (EURUSD, GBPUSD)
-MQL5/Experts/IABot/IABot_M5.mq5      ← robot Or (XAUUSD), version précédente, voir results/backtest_results.csv
-results/                             ← résultats détaillés par paire, profil et période
+MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot EURUSD (version recommandée)
+MQL5/Experts/IABot/IABot_FX_M5.mq5   ← version précédente (EURUSD + GBPUSD)
+MQL5/Experts/IABot/IABot_M5.mq5      ← robot Or (XAUUSD)
+results/                             ← résultats détaillés
 tools/mql5emu/                       ← émulateur MQL5 (traducteur, API, moteur de backtest)
 tools/verify/                        ← scénarios de vérification + rapports
-tools/research/                      ← toute la recherche (stratégies testées, scan 24 h, filtre IA)
+tools/research/                      ← toute la recherche (IA walk-forward, scan 24 h, stratégies)
 tools/data/                          ← téléchargement et préparation des données
 ```
 

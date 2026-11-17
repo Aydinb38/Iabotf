@@ -26,8 +26,13 @@ PROFILES = {
     "fx": dict(title="IABot_FX_M5 (Forex)", sym="EURUSD", tp=1.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=15,
                max_day=3, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
                extra=["--set", "InpExitHour=13"]),
+    # IABot EURUSD : profil « rendement » (TP 3R, BE 1R), jusqu'à 3 positions simultanées espacées d'1 h, risque 0,4 % adaptatif
+    "eurusd": dict(title="IABot_EURUSD", sym="EURUSD", tp=3.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=15,
+                   max_day=3, max_pos=3, min_gap=60, risk=0.4, adaptive=True,
+                   risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11),
+                   min_trades=500, min_be=50, extra=["--set", "InpExitHour=13"]),
 }
-P = PROFILES[PROFILE_NAME]
+P = dict(dict(max_pos=1, min_gap=0, risk=0.5, adaptive=False), **PROFILES[PROFILE_NAME])
 TMP = os.path.join(BUILD, "scenarios")
 os.makedirs(TMP, exist_ok=True)
 EMU = os.path.join(BUILD, "emu")
@@ -115,8 +120,9 @@ def s_baseline(check):
     check(tr.R.min() >= -1.6, f"perte max par trade bornée ({tr.R.min():.2f} R, gaps inclus)")
     bal = balance_before(tr)
     riskpct = tr.risk_money / bal * 100
-    check(riskpct.max() <= 0.56, f"risque par trade <= 0,5 % (+commission) : max {riskpct.max():.3f} %")
-    check(riskpct.median() >= 0.35, f"risque médian proche de la cible ({riskpct.median():.3f} %)")
+    tgt = P["risk"]
+    check(riskpct.max() <= tgt * 1.12, f"risque par trade <= {tgt} % (+commission) : max {riskpct.max():.3f} %")
+    check(riskpct.median() >= tgt * 0.45, f"risque médian cohérent avec la cible ({riskpct.median():.3f} %, risque adaptatif inclus)")
     check(not re.search(r"échec|refusé|impossible|introuvable", log), "aucun échec d'ordre dans le journal")
     # break-even : SL = ouverture +/- 0.1 R
     tk = tr.set_index("ticket")
@@ -158,8 +164,14 @@ def s_baseline(check):
             explained += 1   # marché fermé avant 22h ce vendredi (jour férié) : aucun tick pour clôturer
     check(span_weekend.sum() == explained, f"aucune position gardée le week-end quand le marché cote après 22h le vendredi ({span_weekend.sum()} cas, tous des vendredis fériés/clôture anticipée : {explained})")
     srt = tr.sort_values("open_time")
-    overlap = (srt.open_time.values[1:] < srt.close_time.values[:-1]).sum()
-    check(overlap == 0, "jamais plus d'une position à la fois")
+    ev = sorted([(t, 1) for t in tr.open_time] + [(t, -1) for t in tr.close_time], key=lambda x: (x[0], x[1]))
+    cur = mx = 0
+    for _, k in ev:
+        cur += k; mx = max(mx, cur)
+    check(mx <= P["max_pos"], f"jamais plus de {P['max_pos']} position(s) simultanée(s) (max observé {mx})")
+    if P["min_gap"] > 0:
+        g = srt.groupby(srt.open_time.dt.date).open_time.diff().dropna()
+        check((g >= pd.Timedelta(minutes=P["min_gap"])).all(), f"au moins {P['min_gap']} min entre deux entrées (min observé {g.min()})")
     per_day = tr.groupby(tr.open_time.dt.date).size()
     check(per_day.max() <= P["max_day"], f"max {P['max_day']} trade(s) par jour (max observé {per_day.max()})")
     return f"{s['trades']} trades, gain {s['win']}%, PF {s['pf']}, DD {s['dd']}%"
@@ -172,7 +184,7 @@ def s_fx(check):
         check(len(tr) > 30, f"{sym} : trades exécutés ({len(tr)})")
         riskpct = tr.risk_money / balance_before(tr) * 100
         normal = tr.volume > 0.0101          # au lot minimum, jusqu'à 2 % sont tolérés (paramètre de l'EA)
-        check(riskpct[normal].max() <= 0.56 and riskpct.median() > 0.4 and riskpct.max() <= 2.05,
+        check(riskpct[normal].max() <= P["risk"] * 1.12 and riskpct.median() > P["risk"] * 0.45 and riskpct.max() <= 2.05,
               f"{sym} : risque {riskpct.median():.3f} % (max {riskpct[normal].max():.3f} % ; lot minimum : max {riskpct.max():.3f} %)")
         check((tr.init_sl > 0).all() and (tr.tp > 0).all(), f"{sym} : SL et TP présents")
 
@@ -227,7 +239,13 @@ def s_levels(check):
 def s_netting(check):
     _, _, trb = run("net_base", ["--data", XAU, "--symbol", SYM] + Y2016)
     out, log, tr = run("netting", ["--data", XAU, "--symbol", SYM, "--netting"] + Y2016)
-    check(abs(len(tr) - len(trb)) <= 2, f"comportement identique en netting ({len(tr)} vs {len(trb)})")
+    if P["max_pos"] <= 1:
+        check(abs(len(tr) - len(trb)) <= 2, f"comportement identique en netting ({len(tr)} vs {len(trb)})")
+    else:
+        srt = tr.sort_values("open_time")
+        overlap = (srt.open_time.values[1:] < srt.close_time.values[:-1]).sum()
+        check(len(tr) > 50 and overlap == 0,
+              f"netting : une seule position à la fois, comme l'impose ce type de compte ({len(tr)} trades contre {len(trb)} en hedging)")
     check("compte netting" in log, "mode netting détecté")
 
 
@@ -334,6 +352,26 @@ def s_restart(check):
     check(managed, f"la position #{t} est toujours gérée après redémarrage")
     bA, bB = summary(outA)["balance"], summary(outB)["balance"]
     check(abs(bA - bB) / 10000 < 0.01, f"résultat final identique à 1 % près ({bA:.2f} vs {bB:.2f})")
+
+
+@scenario("19. Risque adaptatif : réduction après une série négative, retour à la normale, mémoire persistante")
+def s_adaptive(check):
+    if not P["adaptive"]:
+        check(True, "sans objet pour ce robot")
+        return
+    out, log, tr = run("adaptive", ["--data", os.path.join(DATA, f"{SYM}_ALL.csv") if os.path.exists(os.path.join(DATA, f"{SYM}_ALL.csv")) else XAU,
+                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01"])
+    reduced = False; ok = bad = 0; n_red = n_norm = 0
+    for line in log.splitlines():
+        if "risque adaptatif -> RÉDUIT" in line: reduced = True; n_red += 1
+        elif "risque adaptatif -> normal" in line: reduced = False; n_norm += 1
+        m = re.search(r"IABot: (VENTE|ACHAT) .*risque ([\d.]+)%\)", line)
+        if m:
+            exp = P["risk"] * (0.5 if reduced else 1.0)
+            if abs(float(m.group(2)) - exp) < 1e-6: ok += 1
+            else: bad += 1
+    check(n_red > 5 and n_norm > 5, f"bascule en mode réduit ({n_red} fois) et retour à la normale ({n_norm} fois)")
+    check(ok > 100 and bad == 0, f"chaque entrée utilise le bon risque ({ok} entrées conformes, {bad} écarts)")
 
 
 @scenario("18. Exécution instrumentée (AddressSanitizer + UBSan + division par zéro) sur toutes les données")
