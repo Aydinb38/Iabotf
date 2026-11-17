@@ -1,5 +1,5 @@
-build/
-data/
+/build/
+/data/
 tools/mql5emu/build/
 __pycache__/
 *.pyc
