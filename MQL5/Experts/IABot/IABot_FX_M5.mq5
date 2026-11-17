@@ -38,6 +38,13 @@ enum ENUM_FX_DIRECTION
    FX_DIR_BUY_ONLY  = 2  // Achats uniquement
   };
 
+enum ENUM_FX_PROFILE
+  {
+   FX_PROFILE_WINRATE = 0, // Taux de réussite élevé (TP 1 R, break-even 0,5 R)
+   FX_PROFILE_RETURN  = 1, // Rendement maximal (TP 3 R, break-even 1 R)
+   FX_PROFILE_CUSTOM  = 2  // Personnalisé (paramètres TP / break-even ci-dessous)
+  };
+
 enum ENUM_TIME_BASE
   {
    TIME_BASE_SERVER = 0, // Heure du serveur (heure du graphique MT5)
@@ -61,16 +68,17 @@ input int               InpATRPeriod        = 14;                // Période ATR
 input int               InpExitHour         = 15;                // Heure de sortie forcée (référence horaire de la session)
 
 input group "=== Stop loss / Take profit / Break-even ==="
+input ENUM_FX_PROFILE   InpProfile          = FX_PROFILE_WINRATE; // Profil de sortie
 input double            InpSL_ATR           = 3.0;               // Stop loss = ATR x (définit 1 R)
-input double            InpTP_R             = 3.0;               // Take profit = R x
+input double            InpTP_R             = 1.0;               // Take profit = R x (profil personnalisé)
 input bool              InpUseBreakEven     = true;              // Activer le break-even
-input double            InpBE_TriggerR      = 1.0;               // Break-even déclenché à +R
+input double            InpBE_TriggerR      = 0.5;               // Break-even déclenché à +R (profil personnalisé)
 input double            InpBE_LockR         = 0.1;               // Gain verrouillé au break-even (R)
 input bool              InpUseTrailing      = false;             // Activer le trailing stop
 input double            InpTrailStartR      = 2.0;               // Trailing actif à partir de +R
 input double            InpTrailDistR       = 1.5;               // Distance du trailing (R)
 input bool              InpUsePartialClose  = false;             // Clôture partielle
-input double            InpPartialAtR       = 1.0;               // Clôture partielle à +R
+input double            InpPartialAtR       = 0.5;               // Clôture partielle à +R (doit être inférieur au TP)
 input double            InpPartialPercent   = 50.0;              // % du volume clôturé
 input int               InpMaxHoldHours     = 0;                 // Durée max d'un trade en heures (0 = illimitée)
 
@@ -86,7 +94,7 @@ input bool            InpCloseOnDailyLoss = false;             // Fermer les pos
 input double          InpMaxDrawdownPct   = 15.0;              // Drawdown max depuis le sommet en % (0 = off)
 input bool            InpCloseOnMaxDD     = true;              // Fermer les positions si le drawdown max est atteint
 input bool            InpResetProtection  = false;             // Réarmer le robot après un arrêt drawdown
-input int             InpMaxTradesPerDay  = 1;                 // Trades max par jour (0 = illimité)
+input int             InpMaxTradesPerDay  = 3;                 // Trades max par jour (0 = illimité)
 input int             InpMaxConsecLosses  = 3;                 // Pertes consécutives max par jour (0 = off)
 input double          InpMaxVolatility    = 3.0;               // Pas de trade si ATR actuel > x fois l'ATR moyen (choc de volatilité, 0 = off)
 input int             InpMaxSpreadPoints  = 20;                // Spread max en points (0 = automatique)
@@ -145,6 +153,9 @@ bool     g_newsAvailable   = true;
 
 ulong    g_failTickets[];
 datetime g_failTimes[];
+
+double   g_tpR             = 1.0;   // take profit effectif (R) selon le profil
+double   g_beR             = 0.5;   // déclenchement effectif du break-even (R)
 
 string   g_status          = "Initialisation";
 string   g_trendText       = "-";
@@ -778,8 +789,8 @@ bool OpenPosition(const int dir, const double slDist, string &msg)
    double price = (dir > 0) ? tk.ask : tk.bid;
    double sl = NormalizePrice((dir > 0) ? price - slDist : price + slDist);
    double tp = 0.0;
-   if(InpTP_R > 0.0)
-      tp = NormalizePrice((dir > 0) ? price + slDist * InpTP_R : price - slDist * InpTP_R);
+   if(g_tpR > 0.0)
+      tp = NormalizePrice((dir > 0) ? price + slDist * g_tpR : price - slDist * g_tpR);
 
    double minDist = StopsMinDistance();
    if(dir > 0)
@@ -875,8 +886,8 @@ bool OpenPosition(const int dir, const double slDist, string &msg)
      {
       double fixSL = NormalizePrice((dir > 0) ? openPrice - slDist : openPrice + slDist);
       double fixTP = 0.0;
-      if(InpTP_R > 0.0)
-         fixTP = NormalizePrice((dir > 0) ? openPrice + slDist * InpTP_R : openPrice - slDist * InpTP_R);
+      if(g_tpR > 0.0)
+         fixTP = NormalizePrice((dir > 0) ? openPrice + slDist * g_tpR : openPrice - slDist * g_tpR);
       if(!ModifyStops(ticket, fixSL, fixTP, "pose SL/TP"))
         {
          Print("IABot: SL impossible à poser -> fermeture immédiate par sécurité");
@@ -936,8 +947,8 @@ double PositionRisk(const ulong ticket, const double openPrice, const double sl,
    double r = GVGet(TicketKey("R", ticket), 0.0);
    if(r > 0.0)
       return r;
-   if(tp > 0.0 && InpTP_R > 0.0)
-      return MathAbs(tp - openPrice) / InpTP_R;
+   if(tp > 0.0 && g_tpR > 0.0)
+      return MathAbs(tp - openPrice) / g_tpR;
    if(sl > 0.0)
       return MathAbs(openPrice - sl);
    return 0.0;
@@ -1033,7 +1044,7 @@ void ManagePositions()
 
       // 3) break-even puis trailing stop
       double newSL = sl;
-      if(InpUseBreakEven && profitR >= InpBE_TriggerR)
+      if(InpUseBreakEven && profitR >= g_beR)
         {
          double be = isBuy ? openPrice + InpBE_LockR * R : openPrice - InpBE_LockR * R;
          if(isBuy && (newSL == 0.0 || newSL < be))
@@ -1470,6 +1481,23 @@ bool SpreadOK(const double slDist, string &why)
 //+------------------------------------------------------------------+
 //| Panneau d'information                                             |
 //+------------------------------------------------------------------+
+// prochaine ouverture de la fenêtre d'entrée (jours ouvrés), en heure serveur
+string NextWindowText(const datetime now)
+  {
+   int offset = (InpTimeBase == TIME_BASE_GMT) ? ServerGMTOffset(now) : 0;
+   datetime day = DayStart(now);
+   for(int k = 0; k < 8; k++)
+     {
+      datetime start = day + (datetime)(k * 86400) + (datetime)(InpSessionStart * 3600) + (datetime)offset;
+      int dow = DowOf(start);
+      if(dow == 0 || dow == 6 || start <= now)
+         continue;
+      long mins = (long)(start - now) / 60;
+      return TimeToString(start, TIME_DATE | TIME_MINUTES) + StringFormat(" (dans %I64dh%02I64d)", mins / 60, mins % 60);
+     }
+   return "-";
+  }
+
 void UpdatePanel(const bool force)
   {
    if(!InpShowPanel || (g_isTester && !MQLInfoInteger(MQL_VISUAL_MODE)))
@@ -1490,6 +1518,8 @@ void UpdatePanel(const bool force)
    s += "IABot FX M5  |  " + _Symbol + "  |  compte " + (g_isHedging ? "hedging" : "netting") + "  |  magic " + IntegerToString((long)InpMagic) + "\n";
    s += "Biais : " + g_trendText + "   |   RSI(" + IntegerToString(InpRSIPeriod) + ") " + TFToString(InpSignalTF) + " : " + DoubleToString(g_lastRSI, 1) + "\n";
    s += "Fenêtre d'entrée " + IntegerToString(InpSessionStart) + "h-" + IntegerToString(InpSessionEnd) + "h : " + (inSession ? "OUVERTE" : "fermée") + "   |   Sortie " + IntegerToString(InpExitHour) + "h   |   Spread : " + DoubleToString(spreadPts, 0) + " pts\n";
+   if(!inSession)
+      s += "Prochaine fenêtre de trading : " + NextWindowText(now) + "\n";
    s += "News : " + NextNewsText(now) + "\n";
    s += "Risque/trade : " + (InpRiskMode == RISK_FIXED_LOT ? "lot fixe " + DoubleToString(InpFixedLot, 2) : DoubleToString(InpRiskPercent, 2) + "%");
    s += "   |   Trades du jour : " + IntegerToString(g_tradesToday) + (InpMaxTradesPerDay > 0 ? "/" + IntegerToString(InpMaxTradesPerDay) : "") + "\n";
@@ -1579,6 +1609,25 @@ int OnInit()
   {
    if(!ValidateInputs())
       return INIT_PARAMETERS_INCORRECT;
+   if(InpProfile == FX_PROFILE_WINRATE)
+     {
+      g_tpR = 1.0;
+      g_beR = 0.5;
+     }
+   else
+      if(InpProfile == FX_PROFILE_RETURN)
+        {
+         g_tpR = 3.0;
+         g_beR = 1.0;
+        }
+      else
+        {
+         g_tpR = InpTP_R;
+         g_beR = InpBE_TriggerR;
+        }
+   if(InpUsePartialClose && g_tpR > 0.0 && InpPartialAtR >= g_tpR)
+      PrintFormat("IABot: attention - clôture partielle à %.2f R >= take profit (%.2f R) : elle ne se déclenchera jamais",
+                  InpPartialAtR, g_tpR);
 
    g_isTester = (MQLInfoInteger(MQL_TESTER) != 0);
    ENUM_ACCOUNT_MARGIN_MODE mm = (ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE);
@@ -1620,7 +1669,7 @@ int OnInit()
       PrintFormat("IABot: info - le graphique est en %s, les signaux sont calculés en %s",
                   TFToString(_Period), TFToString(InpSignalTF));
    PrintFormat("IABot: démarré sur %s | compte %s | remplissage %d | risque %.2f%% | SL %.1f ATR | TP %.1f R",
-               _Symbol, (g_isHedging ? "hedging" : "netting"), (int)g_filling, InpRiskPercent, InpSL_ATR, InpTP_R);
+               _Symbol, (g_isHedging ? "hedging" : "netting"), (int)g_filling, InpRiskPercent, InpSL_ATR, g_tpR);
    if(TradeBias() == 0)
       PrintFormat("IABot: ATTENTION - %s n'est pas pris en charge en mode automatique (paires validées : EURUSD, GBPUSD)", _Symbol);
    if(g_ddHalt)

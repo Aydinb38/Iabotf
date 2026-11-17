@@ -1,33 +1,19 @@
-symbole,periode,mode,type,trades,gain_pct,PF,R_moyen,resultat_pct,dd_max_pct
-AUDUSD,2014-2017,forcé : vente,conception,710,46.2,0.8,-0.047,-14.99,15.03
-AUDUSD,2018 (jan-oct),forcé : vente,hors-échantillon,188,51.6,1.07,0.013,1.24,2.8
-AUDUSD,2026 (avr-sep),forcé : vente,hors-échantillon,109,44.0,0.66,-0.079,-4.32,5.69
-EURCAD,2014-2017,forcé : vente,conception,1005,50.4,1.01,0.005,1.8,10.02
-EURCAD,2018 (jan-oct),forcé : vente,hors-échantillon,192,48.4,0.94,-0.015,-1.4,4.69
-EURCHF,2014-2017,forcé : vente,conception,915,50.6,0.96,-0.01,-5.17,14.03
-EURCHF,2018 (jan-oct),forcé : vente,hors-échantillon,190,52.1,1.12,0.035,3.23,3.8
-EURGBP,2014-2017,forcé : vente,conception,560,45.9,0.87,-0.051,-14.12,15.16
-EURGBP,2018 (jan-oct),forcé : vente,hors-échantillon,190,48.9,0.91,-0.029,-2.83,6.55
-EURGBP,2026 (avr-sep),forcé : vente,hors-échantillon,110,48.2,0.67,-0.101,-5.71,6.7
-EURJPY,2014-2017,forcé : vente,conception,1004,50.4,1.04,0.01,5.15,8.06
-EURJPY,2018 (jan-oct),forcé : vente,hors-échantillon,187,51.9,1.02,0.006,0.51,3.67
-EURJPY,2026 (avr-sep),forcé : vente,hors-échantillon,109,43.1,0.86,-0.034,-1.83,3.71
-EURUSD,2014-2017,automatique (vente),conception,1005,53.0,1.19,0.056,31.1,5.97
-EURUSD,2018 (jan-oct),automatique (vente),hors-échantillon,192,56.2,1.25,0.073,7.15,4.28
-EURUSD,2026 (avr-sep),automatique (vente),hors-échantillon,109,52.3,1.14,0.034,1.86,3.27
-GBPJPY,2014-2017,forcé : vente,conception,1002,48.5,0.94,-0.017,-7.84,14.1
-GBPJPY,2018 (jan-oct),forcé : vente,hors-échantillon,188,49.5,0.97,-0.006,-0.96,6.58
-GBPUSD,2014-2017,automatique (vente),conception,1004,53.1,1.11,0.042,21.04,10.85
-GBPUSD,2018 (jan-oct),automatique (vente),hors-échantillon,190,51.1,1.22,0.079,7.59,4.19
-GBPUSD,2026 (avr-sep),automatique (vente),hors-échantillon,108,53.7,1.13,0.032,1.58,3.36
-NZDUSD,2014-2017,forcé : vente,conception,869,47.1,0.83,-0.037,-14.94,15.01
-NZDUSD,2018 (jan-oct),forcé : vente,hors-échantillon,190,51.6,1.0,0.001,0.01,3.23
-USDCAD,2014-2017,forcé : achat,conception,1004,47.5,0.9,-0.024,-11.21,13.66
-USDCAD,2018 (jan-oct),forcé : achat,hors-échantillon,191,51.3,1.27,0.053,5.1,2.52
-USDCAD,2026 (avr-sep),forcé : achat,hors-échantillon,108,47.2,0.72,-0.068,-3.76,5.6
-USDCHF,2014-2017,forcé : achat,conception,1001,51.0,1.04,0.013,6.1,11.5
-USDCHF,2018 (jan-oct),forcé : achat,hors-échantillon,190,48.9,0.91,-0.024,-2.45,6.01
-USDCHF,2026 (avr-sep),forcé : achat,hors-échantillon,110,57.3,1.21,0.04,2.22,2.6
-USDJPY,2014-2017,forcé : achat,conception,1002,51.6,0.99,-0.0,-0.59,6.45
-USDJPY,2018 (jan-oct),forcé : achat,hors-échantillon,191,52.4,0.9,-0.017,-1.7,2.81
-USDJPY,2026 (avr-sep),forcé : achat,hors-échantillon,109,59.6,0.9,-0.02,-1.11,3.35
+profil,symbole,periode,trades,trades_par_jour,gain_pct,PF,R_moyen,resultat_pct,dd_max_pct
+taux de réussite élevé,EURUSD,2014-2017 (conception),1361,1.35,60.1,1.1,0.026,17.6,6.4
+taux de réussite élevé,GBPUSD,2014-2017 (conception),1499,1.49,61.4,1.06,0.018,13.4,9.0
+taux de réussite élevé,EURUSD+GBPUSD,2014-2017 (conception),2860,2.83,60.8,1.08,0.022,30.9,10.1
+taux de réussite élevé,EURUSD,2018 jan-oct (hors-échantillon),259,1.35,64.5,1.36,0.082,10.8,2.9
+taux de réussite élevé,GBPUSD,2018 jan-oct (hors-échantillon),284,1.49,62.3,1.05,0.016,1.9,4.3
+taux de réussite élevé,EURUSD+GBPUSD,2018 jan-oct (hors-échantillon),543,2.83,63.4,1.19,0.047,12.7,4.9
+taux de réussite élevé,EURUSD,2026 avr-sep (hors-échantillon),133,1.22,60.9,1.19,0.038,2.6,2.4
+taux de réussite élevé,GBPUSD,2026 avr-sep (hors-échantillon),126,1.17,59.5,1.27,0.055,3.4,3.2
+taux de réussite élevé,EURUSD+GBPUSD,2026 avr-sep (hors-échantillon),259,2.35,60.2,1.22,0.046,6.1,5.3
+rendement max,EURUSD,2014-2017 (conception),1154,1.15,52.9,1.17,0.052,33.3,7.4
+rendement max,GBPUSD,2014-2017 (conception),1234,1.23,52.8,1.08,0.029,17.3,8.8
+rendement max,EURUSD+GBPUSD,2014-2017 (conception),2388,2.36,52.8,1.12,0.04,50.6,12.4
+rendement max,EURUSD,2018 jan-oct (hors-échantillon),210,1.09,58.1,1.41,0.113,12.3,3.0
+rendement max,GBPUSD,2018 jan-oct (hors-échantillon),228,1.2,52.6,1.2,0.07,7.9,3.5
+rendement max,EURUSD+GBPUSD,2018 jan-oct (hors-échantillon),438,2.28,55.3,1.29,0.091,20.2,5.1
+rendement max,EURUSD,2026 avr-sep (hors-échantillon),118,1.08,53.4,1.2,0.046,2.8,2.8
+rendement max,GBPUSD,2026 avr-sep (hors-échantillon),114,1.06,53.5,1.12,0.03,1.6,3.3
+rendement max,EURUSD+GBPUSD,2026 avr-sep (hors-échantillon),232,2.11,53.4,1.16,0.038,4.4,5.8

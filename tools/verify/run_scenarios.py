@@ -22,9 +22,9 @@ PROFILES = {
     "gold": dict(title="IABot_M5 (or)", sym="XAUUSD", tp=4.0, trailing=True, win=(9, 20), win_incl_end=True, exit_hour=None,
                  max_day=4, risk_pairs=[("EURUSD", []), ("USDJPY", [])], gmt=(7, 18), min_trades=500, min_be=100,
                  extra=[]),
-    # EA Forex (IABot_FX_M5) : EURUSD, TP 3R, pas de trailing, entrées 10h-13h, sortie 15h, 1 trade/jour
-    "fx": dict(title="IABot_FX_M5 (Forex)", sym="EURUSD", tp=3.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=15,
-               max_day=1, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
+    # EA Forex (IABot_FX_M5) : EURUSD, profil « taux de réussite » (TP 1R, BE 0,5R), entrées 10h-13h, sortie 15h, 3 trades/jour
+    "fx": dict(title="IABot_FX_M5 (Forex)", sym="EURUSD", tp=1.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=15,
+               max_day=3, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
                extra=["--set", "InpExitHour=13"]),
 }
 P = PROFILES[PROFILE_NAME]
