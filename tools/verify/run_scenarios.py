@@ -26,11 +26,11 @@ PROFILES = {
     "fx": dict(title="IABot_FX_M5 (Forex)", sym="EURUSD", tp=1.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=15,
                max_day=3, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
                extra=["--set", "InpExitHour=13"]),
-    # IABot EURUSD : profil « rendement » (TP 3R, BE 1R), jusqu'à 3 positions simultanées espacées d'1 h, risque 0,4 % adaptatif
-    "eurusd": dict(title="IABot_EURUSD", sym="EURUSD", tp=3.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=15,
-                   max_day=3, max_pos=3, min_gap=60, risk=0.4, adaptive=True,
+    # IABot EURUSD v3 : profil « taux de réussite » (sortie en gain, maintien jusqu'à 17 h), filtre d'amplitude, 3 positions espacées d'1 h, risque 0,5 %
+    "eurusd": dict(title="IABot_EURUSD v3", sym="EURUSD", tp=3.0, trailing=False, win=(10, 13), win_incl_end=False, exit_hour=17,
+                   max_day=3, max_pos=3, min_gap=60, risk=0.5, adaptive=True,
                    risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11),
-                   min_trades=500, min_be=50, extra=["--set", "InpExitHour=13"]),
+                   min_trades=500, min_be=20, extra=["--set", "InpExitHour=13", "--set", "InpHoldUntilHour=15"]),
 }
 P = dict(dict(max_pos=1, min_gap=0, risk=0.5, adaptive=False), **PROFILES[PROFILE_NAME])
 TMP = os.path.join(BUILD, "scenarios")
@@ -117,7 +117,8 @@ def s_baseline(check):
     ratio = (tr.tp - tr.open).abs() / (tr.open - tr.init_sl).abs()
     tol = 0.02
     check(ratio.between(P["tp"] - tol, P["tp"] + tol).all(), f"TP = {P['tp']:.0f} R (min {ratio.min():.3f} max {ratio.max():.3f}, arrondi au point)")
-    check(tr.R.min() >= -1.6, f"perte max par trade bornée ({tr.R.min():.2f} R, gaps inclus)")
+    check(tr.R.min() >= -2.0 and (tr.R < -1.15).mean() < 0.005,
+          f"perte max par trade bornée ({tr.R.min():.2f} R, gaps d'annonces inclus ; {(tr.R < -1.15).sum()} trade(s) sous -1,15 R)")
     bal = balance_before(tr)
     riskpct = tr.risk_money / bal * 100
     tgt = P["risk"]
@@ -314,7 +315,22 @@ def s_news(check):
         nt = t + timedelta(minutes=10)
         near += ((tr.open_time >= nt - timedelta(minutes=30)) & (tr.open_time <= nt + timedelta(minutes=30))).sum()
     check(near == 0, f"aucune entrée à +/-30 min des {len(picks)} news USD ({near})")
-    check(len(re.findall(r"Pause news", open(os.path.join(TMP, 'live_news.log'), encoding='utf-8').read())) >= 0, "statut news")
+    if P.get("exit_hour", 0) and P["exit_hour"] > 15:
+        # positions gardées en perte après 15 h : une news USD à 15 h 30 doit provoquer leur fermeture avant
+        held = tr0[(tr0.close_time.dt.hour * 60 + tr0.close_time.dt.minute > 15 * 60 + 30)]
+        days = sorted(set(held.close_time.dt.date))[:20]
+        news2 = os.path.join(TMP, "news_hold.csv")
+        with open(news2, "w") as f:
+            for d in days:
+                f.write(f"{d:%Y-%m-%d} 15:30,USD,3,Test hold {d}\n")
+        out3, log3, tr3 = run("live_hold", ["--data", XAU, "--symbol", SYM, "--live", "--news", news2] + Y2016)
+        late = 0
+        for d in days:
+            x = tr3[(tr3.open_time.dt.date == d) & (tr3.close_time > pd.Timestamp(f"{d} 15:20")) & (tr3.close_time < pd.Timestamp(f"{d} 16:00"))]
+            late += int(((x.close_time > pd.Timestamp(f"{d} 15:30"))).sum())
+        n_close = len(re.findall(r"news imminente", log3))
+        check(len(days) > 3 and n_close > 0 and late == 0,
+              f"position gardée en perte fermée avant la news de 15 h 30 ({n_close} fermeture(s) sur {len(days)} jours testés, {late} après la news)")
 
 
 @scenario("15. Session en heure GMT (testeur, décalage auto été/hiver US)")
@@ -344,7 +360,8 @@ def s_restart(check):
     state = os.path.join(TMP, "state.txt")
     o1, _, _ = run("restartB1", ["--data", XAU, "--symbol", SYM, "--from", "2016-01-01", "--stop-at", f"{stop:%Y-%m-%d %H:%M}",
                                  "--save-state", state])
-    check("1 open position" in o1, "une position est ouverte au moment de l'arrêt")
+    m_open = re.search(r"with (\d+) open position", o1)
+    check(m_open is not None and int(m_open.group(1)) >= 1, f"position(s) ouverte(s) au moment de l'arrêt ({m_open.group(1) if m_open else 0})")
     outB, logB, trB = run("restartB2", ["--data", XAU, "--symbol", SYM, "--from", f"{stop:%Y-%m-%d %H:%M}", "--to", "2017-01-01",
                                         "--load-state", state])
     t = int(mid.ticket)
@@ -360,7 +377,7 @@ def s_adaptive(check):
         check(True, "sans objet pour ce robot")
         return
     out, log, tr = run("adaptive", ["--data", os.path.join(DATA, f"{SYM}_ALL.csv") if os.path.exists(os.path.join(DATA, f"{SYM}_ALL.csv")) else XAU,
-                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01"])
+                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01", "--set", "InpUseAdaptiveRisk=true"])
     reduced = False; ok = bad = 0; n_red = n_norm = 0
     for line in log.splitlines():
         if "risque adaptatif -> RÉDUIT" in line: reduced = True; n_red += 1

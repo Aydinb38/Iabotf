@@ -7,21 +7,24 @@
 //|     européenne (effet documenté : Ranaldo 2009, Breedon &        |
 //|     Ranaldo 2013), 12 années positives sur 14 ;                  |
 //|   - les meilleures entrées sont les rebonds courts M5 (RSI(3)    |
-//|     > 70) entre 10h et 13h (heure serveur GMT+2/+3) ;            |
+//|     > 65) entre 10h et 13h (heure serveur GMT+2/+3), les jours   |
+//|     où la veille a bougé d'au moins 6 x l'ATR horaire ;          |
 //|   - plusieurs entrées espacées d'1h améliorent le résultat.      |
 //|                                                                  |
 //|  Gestion : jusqu'à 3 positions/jour, SL = 3 x ATR(14) H1,        |
-//|  TP = 3 R, break-even à +1 R (profil rendement, par défaut) ou   |
-//|  +0,5 R (profil taux de réussite), sortie forcée à 15h.          |
-//|  Adaptation : volatilité (ATR), heure d'été, news, choc de       |
-//|  volatilité, et risque adaptatif : le robot mémorise le résultat |
-//|  de ses 60 derniers trades et réduit son risque de moitié quand  |
-//|  ce bilan devient négatif.                                       |
+//|  TP = 3 R, break-even à +1 R. Sortie à 15h ; profil "taux de     |
+//|  réussite" (défaut) : une position perdante à 15h est gardée et  |
+//|  fermée dès qu'elle repasse en gain, au plus tard à 17h.         |
+//|  Adaptation : chaque jour le robot juge si les conditions sont    |
+//|  favorables (amplitude de la veille), adapte son stop à la        |
+//|  volatilité (ATR), gère l'heure d'été, les news et les chocs de   |
+//|  volatilité. Option : risque adaptatif (mémoire des 60 derniers   |
+//|  trades, risque divisé par 2 si leur bilan est négatif).          |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "2.00"
+#property version     "3.00"
 #property description "Robot autonome spécialisé EURUSD (M5) : séance européenne, jusqu'à 3 trades/jour,"
-#property description "SL 3 ATR H1, TP 3 R, break-even, sortie 15h, risque adaptatif à mémoire persistante,"
+#property description "filtre d'amplitude, SL 3 ATR H1, TP 3 R, break-even, sortie 15h-17h, risque adaptatif persistant,"
 #property description "limites journalières, coupe-circuit, filtres spread / news / volatilité."
 
 //+------------------------------------------------------------------+
@@ -43,8 +46,8 @@ enum ENUM_FX_DIRECTION
 
 enum ENUM_FX_PROFILE
   {
-   FX_PROFILE_WINRATE = 0, // Taux de réussite élevé (TP 3 R, break-even 0,5 R)
-   FX_PROFILE_RETURN  = 1, // Rendement maximal (TP 3 R, break-even 1 R)
+   FX_PROFILE_WINRATE = 0, // Taux de réussite max (sortie en gain, maintien jusqu'à 17h si perte)
+   FX_PROFILE_RETURN  = 1, // Rendement maximal (sortie à 15h dans tous les cas)
    FX_PROFILE_CUSTOM  = 2  // Personnalisé (paramètres TP / break-even ci-dessous)
   };
 
@@ -65,7 +68,8 @@ input ENUM_TIMEFRAMES   InpSignalTF         = PERIOD_M5;         // Unité de te
 input group "=== Stratégie EURUSD : séance européenne ==="
 input ENUM_FX_DIRECTION InpDirection        = FX_DIR_AUTO;       // Sens des trades
 input int               InpRSIPeriod        = 3;                 // Période du RSI de rebond (M5)
-input double            InpRSIPullback      = 70.0;              // Vente si RSI > niveau (achat si RSI < 100 - niveau)
+input double            InpRSIPullback      = 65.0;              // Vente si RSI > niveau (achat si RSI < 100 - niveau)
+input double            InpMinPrevRangeATR  = 6.0;               // Filtre : amplitude de la veille >= x ATR H1 (0 = off)
 input ENUM_TIMEFRAMES   InpATRTF            = PERIOD_H1;         // Unité de temps de l'ATR (stop loss)
 input int               InpATRPeriod        = 14;                // Période ATR
 input int               InpExitHour         = 15;                // Heure de sortie forcée (référence horaire de la session)
@@ -73,7 +77,9 @@ input int               InpMaxPositions     = 3;                 // Positions si
 input int               InpMinMinutesBetween = 60;               // Minutes minimum entre deux entrées
 
 input group "=== Stop loss / Take profit / Break-even ==="
-input ENUM_FX_PROFILE   InpProfile          = FX_PROFILE_RETURN; // Profil de sortie
+input ENUM_FX_PROFILE   InpProfile          = FX_PROFILE_WINRATE; // Profil de sortie
+input int               InpHoldUntilHour    = 17;                // Profil taux de réussite : position perdante gardée jusqu'à (heure)
+input double            InpExitMinProfitR   = 0.05;              // Profil taux de réussite : sortie dès que le gain atteint +R
 input double            InpSL_ATR           = 3.0;               // Stop loss = ATR x (définit 1 R)
 input double            InpTP_R             = 3.0;               // Take profit = R x (profil personnalisé)
 input bool              InpUseBreakEven     = true;              // Activer le break-even
@@ -89,7 +95,7 @@ input int               InpMaxHoldHours     = 0;                 // Durée max d
 
 input group "=== Gestion du risque ==="
 input ENUM_RISK_MODE  InpRiskMode         = RISK_PCT_BALANCE;  // Calcul du lot
-input double          InpRiskPercent      = 0.4;               // Risque par trade (%)
+input double          InpRiskPercent      = 0.5;               // Risque par trade (%)
 input double          InpFixedLot         = 0.01;              // Lot fixe (mode lot fixe)
 input double          InpMaxLot           = 50.0;              // Lot maximum
 input double          InpMinLotMaxRiskPct = 2.0;               // Risque max (%) toléré si le lot minimum est imposé
@@ -100,7 +106,7 @@ input double          InpMaxDrawdownPct   = 20.0;              // Drawdown max d
 input bool            InpCloseOnMaxDD     = true;              // Fermer les positions si le drawdown max est atteint
 input bool            InpResetProtection  = false;             // Réarmer le robot après un arrêt drawdown
 input int             InpMaxTradesPerDay  = 3;                 // Trades max par jour (0 = illimité)
-input bool            InpUseAdaptiveRisk  = true;              // Risque adaptatif (mémoire des derniers trades)
+input bool            InpUseAdaptiveRisk  = false;             // Risque adaptatif (mémoire des derniers trades)
 input int             InpAdaptiveWindow   = 60;                // Nombre de trades mémorisés
 input double          InpAdaptiveFactor   = 0.5;               // Multiplicateur de risque si le bilan récent est négatif
 input int             InpMaxConsecLosses  = 3;                 // Pertes consécutives max par jour (0 = off)
@@ -166,6 +172,8 @@ double   g_tpR             = 3.0;   // take profit effectif (R) selon le profil
 datetime g_lastEntryTime   = 0;     // dernière entrée du jour
 bool     g_riskReduced     = false; // risque adaptatif réduit
 double   g_beR             = 1.0;   // déclenchement effectif du break-even (R)
+bool     g_condExit        = true;  // sortie de séance conditionnelle (profil taux de réussite)
+double   g_prevRangeATR    = 0.0;   // amplitude de la veille en ATR H1 (filtre de qualité)
 
 string   g_status          = "Initialisation";
 string   g_trendText       = "-";
@@ -1069,13 +1077,40 @@ bool IsFridayCloseTime(const datetime now)
   }
 
 // sortie forcée : heure de sortie atteinte, ou position restée ouverte plus de 20 h
-bool IsSessionExitTime(const datetime now, const datetime openTime)
+// une news importante est-elle prévue dans les prochaines minutes ?
+bool NewsWithin(const datetime now, const int minutes, string &info)
+  {
+   info = "";
+   if(g_isTester || !InpUseNewsFilter)
+      return false;
+   for(int i = 0; i < ArraySize(g_newsTimes); i++)
+     {
+      datetime t = g_newsTimes[i];
+      if(t >= now && t - now <= (datetime)(minutes * 60))
+        {
+         info = g_newsNames[i];
+         return true;
+        }
+     }
+   return false;
+  }
+
+// sortie de séance : à l'heure de sortie ; en profil "taux de réussite", une position perdante est gardée
+// (SL / break-even / TP toujours actifs) et fermée dès qu'elle repasse en gain, au plus tard à InpHoldUntilHour
+bool IsSessionExitTime(const datetime now, const datetime openTime, const double profitR)
   {
    if(InpExitHour < 0)
       return false;
    if(now - openTime >= 20 * 3600)
       return true;
-   return (SessionHour(now) >= InpExitHour && SessionHour(openTime) < InpExitHour);
+   int h = SessionHour(now);
+   if(!(h >= InpExitHour && SessionHour(openTime) < InpExitHour))
+      return false;
+   if(!g_condExit)
+      return true;
+   if(profitR >= InpExitMinProfitR)
+      return true;
+   return (h >= InpHoldUntilHour);
   }
 
 void ManagePositions()
@@ -1126,9 +1161,19 @@ void ManagePositions()
          ClosePosition(ticket, vol, "fermeture du vendredi");
          continue;
         }
-      if(IsSessionExitTime(now, openTime))
+      // position gardée en perte après l'heure de sortie : on ne la laisse pas traverser une news importante
+      if(g_condExit && InpExitHour >= 0 && SessionHour(now) >= InpExitHour && SessionHour(openTime) < InpExitHour)
         {
-         ClosePosition(ticket, vol, "sortie de fin de séance");
+         string newsInfo = "";
+         if(NewsWithin(now, 10, newsInfo))
+           {
+            ClosePosition(ticket, vol, "news imminente : " + newsInfo);
+            continue;
+           }
+        }
+      if(IsSessionExitTime(now, openTime, profitR))
+        {
+         ClosePosition(ticket, vol, (profitR >= 0.0) ? "sortie de fin de séance (en gain)" : "sortie de fin de séance");
          continue;
         }
 
@@ -1553,6 +1598,25 @@ bool GetSignal(const datetime entryBarTime, int &dir, double &slDist, string &wh
       why = StringFormat("Hors fenêtre d'entrée (%dh-%dh)", InpSessionStart, InpSessionEnd);
       return true;
      }
+   // filtre de qualité : la veille doit avoir bougé suffisamment par rapport à la volatilité horaire actuelle
+   g_prevRangeATR = 0.0;
+   double pdHigh = iHigh(_Symbol, PERIOD_D1, 1);
+   double pdLow = iLow(_Symbol, PERIOD_D1, 1);
+   if(pdHigh > 0.0 && pdLow > 0.0)
+      g_prevRangeATR = (pdHigh - pdLow) / atr;
+   if(InpMinPrevRangeATR > 0.0)
+     {
+      if(pdHigh <= 0.0 || pdLow <= 0.0)
+        {
+         why = "Bougie journalière de la veille indisponible";
+         return false;
+        }
+      if(g_prevRangeATR < InpMinPrevRangeATR)
+        {
+         why = StringFormat("Journée écartée : amplitude de la veille %.1f x ATR (< %.1f)", g_prevRangeATR, InpMinPrevRangeATR);
+         return true;
+        }
+     }
 
    ENUM_SYMBOL_TRADE_MODE mode = (ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE);
    if(bias < 0 && rsi > InpRSIPullback && mode != SYMBOL_TRADE_MODE_LONGONLY)
@@ -1630,7 +1694,7 @@ void UpdatePanel(const bool force)
    string s = "";
    s += "IABot EURUSD  |  " + _Symbol + "  |  compte " + (g_isHedging ? "hedging" : "netting") + "  |  magic " + IntegerToString((long)InpMagic) + "\n";
    s += "Biais : " + g_trendText + "   |   RSI(" + IntegerToString(InpRSIPeriod) + ") " + TFToString(InpSignalTF) + " : " + DoubleToString(g_lastRSI, 1) + "\n";
-   s += "Fenêtre d'entrée " + IntegerToString(InpSessionStart) + "h-" + IntegerToString(InpSessionEnd) + "h : " + (inSession ? "OUVERTE" : "fermée") + "   |   Sortie " + IntegerToString(InpExitHour) + "h   |   Spread : " + DoubleToString(spreadPts, 0) + " pts\n";
+   s += "Fenêtre d'entrée " + IntegerToString(InpSessionStart) + "h-" + IntegerToString(InpSessionEnd) + "h : " + (inSession ? "OUVERTE" : "fermée") + "   |   Sortie " + IntegerToString(InpExitHour) + "h" + (g_condExit ? " (si perte : jusqu'à " + IntegerToString(InpHoldUntilHour) + "h)" : "") + "   |   Spread : " + DoubleToString(spreadPts, 0) + " pts\n";
    if(!inSession)
       s += "Prochaine fenêtre de trading : " + NextWindowText(now) + "\n";
    s += "News : " + NextNewsText(now) + "\n";
@@ -1679,6 +1743,11 @@ bool ValidateInputs()
    if(InpMaxPositions < 1 || InpMinMinutesBetween < 0 || InpAdaptiveWindow < 1 || InpAdaptiveFactor <= 0.0 || InpAdaptiveFactor > 1.0)
      {
       Print("IABot: paramètres de positions / risque adaptatif invalides");
+      ok = false;
+     }
+   if(InpHoldUntilHour < 0 || InpHoldUntilHour > 23 || InpMinPrevRangeATR < 0.0)
+     {
+      Print("IABot: heure de maintien ou filtre d'amplitude invalides");
       ok = false;
      }
    if(InpRSIPullback <= 50.0 || InpRSIPullback >= 100.0)
@@ -1734,18 +1803,21 @@ int OnInit()
    if(InpProfile == FX_PROFILE_WINRATE)
      {
       g_tpR = 3.0;
-      g_beR = 0.5;
+      g_beR = 1.0;
+      g_condExit = true;
      }
    else
       if(InpProfile == FX_PROFILE_RETURN)
         {
          g_tpR = 3.0;
          g_beR = 1.0;
+         g_condExit = false;
         }
       else
         {
          g_tpR = InpTP_R;
          g_beR = InpBE_TriggerR;
+         g_condExit = (InpHoldUntilHour > InpExitHour);
         }
    if(InpUsePartialClose && g_tpR > 0.0 && InpPartialAtR >= g_tpR)
       PrintFormat("IABot: attention - clôture partielle à %.2f R >= take profit (%.2f R) : elle ne se déclenchera jamais",
