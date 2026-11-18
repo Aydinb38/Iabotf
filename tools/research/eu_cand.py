@@ -48,7 +48,7 @@ EXITS = {
 def build(tag):
     f = prep("EURUSD", tag); m5 = f["m5"]; m1 = f["m1"]
     tod = m5["time"] % 86400; wk = (f["dow"] >= 1) & (f["dow"] <= 5)
-    S = wk & (tod >= 10 * 3600 - 300) & (tod < 13 * 3600 - 300) & (f["rsi3"] > 60)
+    S = wk & (tod >= 8 * 3600 - 300) & (tod < 15 * 3600 - 300) & (f["rsi3"] > 55)
     idx = np.flatnonzero(S); idx = idx[idx + 1 < len(m5["time"])]
     idx = idx[(m5["time"][idx + 1] - m5["time"][idx]) <= 600]
     ent = m5["m1_start"][idx + 1]; R = 3 * f["h1_atr"][idx]
@@ -60,12 +60,13 @@ def build(tag):
         for k in range(len(idx)):
             out[k], xi[k] = short_trade(m1["open"], m1["high"], m1["low"], m1["time"], ent[k], cost, R[k], tpR, b1t, b1l, b2t, b2l, t1, t2, cond)
         D[name] = out; D[name + "_exit"] = m1["time"][xi]
-    feats = pd.read_pickle(os.path.join(os.path.dirname(__file__), "eurusd_feat.pkl" if tag == "ALL" else "eurusd_feat_2026.pkl"))
+    fname = {"ALL": "eurusd_feat.pkl", "OOS2026": "eurusd_feat_2026.pkl", "MT5": "mt5_feat.pkl"}[tag]
+    feats = pd.read_pickle(os.path.join(os.path.dirname(os.path.abspath(__file__)), fname))
     D = D.merge(feats.drop(columns=["close", "m1_next", "next_gap", "y1h", "y2h", "y4h"]), on="time", how="left")
     D["year"] = pd.to_datetime(D.time, unit="s").dt.year; D["day"] = D.time // 86400
     return D
 
 if __name__ == "__main__":
-    for tag in ("ALL", "OOS2026"):
+    for tag in sys.argv[1:] or ("ALL", "OOS2026"):
         D = build(tag); D.to_pickle(os.path.join(os.path.dirname(__file__), f"eu_cand_{tag}.pkl"))
         print(tag, len(D), "candidates")

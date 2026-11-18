@@ -52,7 +52,7 @@ def build(tag, hold=180, ext=120):
         outB[k], xB[k] = trade(m1["open"], m1["high"], m1["low"], m1["time"], ent[k], d[k], cost[k], R[k], 3.0, 1.0, 0.1, hold, ext, 1, 0.05)
     D = pd.DataFrame({"time": m5["time"][idx], "dir": d, "R_price": R, "rsi3_sig": f["rsi3"][idx], "entry_hour": hour_e,
                       "A": outA, "B": outB, "exitB": m1["time"][xB]})
-    feats = pd.read_pickle(os.path.join(os.path.dirname(__file__), "eurusd_feat.pkl" if tag == "ALL" else "eurusd_feat_2026.pkl"))
+    feats = pd.read_pickle(os.path.join(os.path.dirname(__file__), "eurusd_feat_2026.pkl" if tag == "OOS2026" else "eurusd_feat.pkl"))
     D = D.merge(feats.drop(columns=["close", "m1_next", "next_gap", "y1h", "y2h", "y4h"]), on="time", how="left")
     D["year"] = pd.to_datetime(D.time, unit="s").dt.year; D["day"] = D.time // 86400
     return D

@@ -32,7 +32,7 @@ static datetime parse_date(const std::string& s) {
 int main(int argc, char** argv) {
   std::string data, trades_out, equity_out, log_out; std::vector<std::pair<std::string, std::string>> sets;
   std::string from_s, to_s, stop_s, save_state, load_state; bool spread_set = false, comm_set = false, swap_set = false;
-  double spread = 0, comm = 0, swl = 0, sws = 0, quote_usd_opt = 0;
+  double spread = 0, comm = 0, swl = 0, sws = 0, quote_usd_opt = 0, spread_add = 0; bool has_spread = false, use_data_spread = true;
   for (int i = 1; i < argc; i++) {
     std::string a = argv[i];
     auto next = [&]() -> std::string { if (i + 1 >= argc) { fprintf(stderr, "missing value for %s\n", a.c_str()); exit(2); } return argv[++i]; };
@@ -57,6 +57,8 @@ int main(int argc, char** argv) {
     else if (a == "--vstep") E.cfg.vstep = std::stod(next());
     else if (a == "--netting") E.cfg.hedging = false;
     else if (a == "--quote-usd") quote_usd_opt = std::stod(next());
+    else if (a == "--spread-add") spread_add = std::stod(next());
+    else if (a == "--fixed-spread") use_data_spread = false;
     else if (a == "--requote-prob") E.cfg.requote_prob = std::stod(next());
     else if (a == "--ignore-sltp-on-open") E.cfg.ignore_sltp_on_open = true;
     else if (a == "--reject-sltp") E.cfg.reject_sltp = true;
@@ -128,11 +130,16 @@ int main(int argc, char** argv) {
   }
 
   // load M1 data
-  struct M1 { datetime t; double o, h, l, c; };
+  struct M1 { datetime t; double o, h, l, c; double sp; };
   std::vector<M1> m1; m1.reserve(2000000);
   { FILE* f = fopen(data.c_str(), "r"); if (!f) { fprintf(stderr, "cannot open %s\n", data.c_str()); return 2; }
     char line[256]; if (!fgets(line, sizeof line, f)) return 2;
-    while (fgets(line, sizeof line, f)) { M1 b; long t; if (sscanf(line, "%ld,%lf,%lf,%lf,%lf", &t, &b.o, &b.h, &b.l, &b.c) == 5) { b.t = t; m1.push_back(b); } }
+    has_spread = std::string(line).find("spread") != std::string::npos;
+    while (fgets(line, sizeof line, f)) {
+      M1 b; long t; b.sp = 0;
+      int k = sscanf(line, "%ld,%lf,%lf,%lf,%lf,%lf", &t, &b.o, &b.h, &b.l, &b.c, &b.sp);
+      if (k >= 5) { b.t = t; m1.push_back(b); }
+    }
     fclose(f); }
   if (m1.empty()) { fprintf(stderr, "no data\n"); return 2; }
   datetime start = from_s.empty() ? m1.front().t + E.cfg.warmup_days * 86400 : parse_date(from_s);
@@ -149,6 +156,7 @@ int main(int argc, char** argv) {
     double p[4]; p[0] = b.o;
     if (std::fabs(b.h - b.o) < std::fabs(b.o - b.l)) { p[1] = b.h; p[2] = b.l; } else { p[1] = b.l; p[2] = b.h; }
     p[3] = b.c;
+    if (has_spread && use_data_spread) E.cfg.spread_points = std::max(1.0, b.sp) + spread_add;
     for (int k = 0; k < 4; k++) {
       if (k > 0 && p[k] == p[k - 1]) continue;
       E.on_tick_price(b.t + k * 15, p[k], k == 0);

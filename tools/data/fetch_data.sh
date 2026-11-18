@@ -25,3 +25,10 @@ done
 curl -sSfL -o "$RAW/2026/XAUUSD_1m.csv" "https://raw.githubusercontent.com/getdata-finance/xauusd-1m-ohlcv-metals-historical-data/main/XAUUSD_1m.csv"
 python3 "$ROOT/tools/data/prepare_data.py" "$RAW/fxm1" "$RAW/2026" "$OUT"
 python3 "$ROOT/tools/data/build_eurusd_all.py" "$RAW/fxm1" "$OUT/EURUSD_ALL.csv"
+# 3) vraies données MT5 EURUSD M1 2007-2025 (heure serveur + spread réel), dépôt public lxloby/15-minute-quick-win-strategy
+if [ ! -d "$RAW/mt5" ]; then
+  git clone --filter=blob:none --no-checkout --depth 1 https://github.com/lxloby/15-minute-quick-win-strategy.git "$RAW/mt5"
+fi
+(cd "$RAW/mt5" && git checkout HEAD -- $(for y in $(seq 2007 2025); do echo data/cache/EURUSD_M1/$y.parquet; done))
+python3 -m pip install -q pyarrow >/dev/null 2>&1 || true
+python3 -I "$ROOT/tools/data/convert_mt5.py" "$RAW/mt5/data/cache/EURUSD_M1" "$OUT/EURUSD_MT5.csv"

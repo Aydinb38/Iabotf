@@ -27,9 +27,9 @@ PROFILES = {
                max_day=3, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
                extra=["--set", "InpExitHour=13"]),
     # IABot EURUSD v3 : profil « taux de réussite » (sortie en gain, maintien jusqu'à 17 h), filtre d'amplitude, 3 positions espacées d'1 h, risque 0,5 %
-    "eurusd": dict(title="IABot_EURUSD v4", sym="EURUSD", tp=3.0, trailing=False, win=(10, 14), win_incl_end=False, exit_hour=17,
-                   max_day=3, max_pos=3, min_gap=60, risk=0.5, adaptive=True,
-                   risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 12),
+    "eurusd": dict(title="IABot_EURUSD v5", sym="EURUSD", tp=3.0, trailing=False, win=(11, 14), win_incl_end=False, exit_hour=17,
+                   max_day=2, max_pos=2, min_gap=60, risk=0.5, adaptive=True,
+                   risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(9, 12),
                    min_trades=500, min_be=20, extra=["--set", "InpExitHour=13", "--set", "InpHoldUntilHour=15"]),
 }
 P = dict(dict(max_pos=1, min_gap=0, risk=0.5, adaptive=False), **PROFILES[PROFILE_NAME])

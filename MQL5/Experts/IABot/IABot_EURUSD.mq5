@@ -2,29 +2,30 @@
 //|                                                 IABot_EURUSD.mq5 |
 //|          Robot de trading autonome spécialisé EURUSD (M5)        |
 //|                                                                  |
-//|  Ce que le robot a appris sur 14 ans d'EURUSD (2005-2018) :      |
+//|  Ce que le robot a appris (19 ans de données MT5 réelles,       |
+//|  EURUSD 2007-2025, heure serveur exacte et spread réel) :         |
 //|   - l'euro tend à baisser face au dollar pendant la séance       |
 //|     européenne (effet documenté : Ranaldo 2009, Breedon &        |
-//|     Ranaldo 2013), 12 années positives sur 14 ;                  |
-//|   - les meilleures entrées sont les rebonds courts M5 (RSI(3)    |
-//|     > 65) entre 10h et 14h (heure serveur GMT+2/+3), les jours   |
-//|     où la veille a bougé d'au moins 6 x l'ATR horaire ;          |
-//|   - plusieurs entrées espacées d'1h améliorent le résultat.      |
+//|     Ranaldo 2013) ;                                              |
+//|   - meilleures entrées : rebonds courts M5 (RSI(3) > 65) entre   |
+//|     11h et 14h (heure serveur GMT+2/+3), les jours où la veille  |
+//|     a bougé d'au moins 6 x l'ATR horaire et où la volatilité     |
+//|     horaire reste <= 1,1 x sa moyenne sur 10 jours ;             |
+//|   - 2 positions max par jour : les positions d'une même séance   |
+//|     sont corrélées, en ouvrir plus double le drawdown.           |
 //|                                                                  |
-//|  Gestion : jusqu'à 3 positions/jour, SL = 3 x ATR(14) H1,        |
-//|  TP = 3 R, break-even à +1 R. Sortie à 15h ; profil "taux de     |
-//|  réussite" (défaut) : une position perdante à 15h est gardée et  |
-//|  fermée dès qu'elle repasse en gain, au plus tard à 17h.         |
-//|  Adaptation : chaque jour le robot juge si les conditions sont    |
-//|  favorables (amplitude de la veille), adapte son stop à la        |
-//|  volatilité (ATR), gère l'heure d'été, les news et les chocs de   |
-//|  volatilité. Option : risque adaptatif (mémoire des 60 derniers   |
-//|  trades, risque divisé par 2 si leur bilan est négatif).          |
+//|  Gestion : SL = 3 x ATR(14) H1, TP = 3 R, break-even à +1 R.     |
+//|  Sortie à 15h ; profil "taux de réussite" (défaut) : une         |
+//|  position perdante à 15h est gardée et fermée dès qu'elle        |
+//|  repasse en gain, au plus tard à 17h (fermée 10 min avant une    |
+//|  annonce importante).                                            |
+//|  Temps réel : analyse des tendances M5/H1/H4/D1, volatilité,     |
+//|  séance, calendrier économique MT5, prévision statistique.       |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "4.00"
-#property description "Robot autonome spécialisé EURUSD (M5) : séance européenne, jusqu'à 3 trades/jour,"
-#property description "filtre d'amplitude, SL 3 ATR H1, TP 3 R, break-even, sortie 15h-17h, risque adaptatif persistant,"
+#property version     "5.00"
+#property description "Robot autonome spécialisé EURUSD (M5) : séance européenne 11h-14h, 2 trades/jour max,"
+#property description "filtres d'amplitude et de volatilité, SL 3 ATR H1, TP 3 R, break-even, sortie 15h-17h,"
 #property description "limites journalières, coupe-circuit, filtres spread / news / volatilité."
 
 //+------------------------------------------------------------------+
@@ -73,7 +74,7 @@ input double            InpMinPrevRangeATR  = 6.0;               // Filtre : amp
 input ENUM_TIMEFRAMES   InpATRTF            = PERIOD_H1;         // Unité de temps de l'ATR (stop loss)
 input int               InpATRPeriod        = 14;                // Période ATR
 input int               InpExitHour         = 15;                // Heure de sortie forcée (référence horaire de la session)
-input int               InpMaxPositions     = 3;                 // Positions simultanées max
+input int               InpMaxPositions     = 2;                 // Positions simultanées max
 input int               InpMinMinutesBetween = 60;               // Minutes minimum entre deux entrées
 
 input group "=== Stop loss / Take profit / Break-even ==="
@@ -105,19 +106,19 @@ input bool            InpCloseOnDailyLoss = false;             // Fermer les pos
 input double          InpMaxDrawdownPct   = 20.0;              // Drawdown max depuis le sommet en % (0 = off)
 input bool            InpCloseOnMaxDD     = true;              // Fermer les positions si le drawdown max est atteint
 input bool            InpResetProtection  = false;             // Réarmer le robot après un arrêt drawdown
-input int             InpMaxTradesPerDay  = 3;                 // Trades max par jour (0 = illimité)
+input int             InpMaxTradesPerDay  = 2;                 // Trades max par jour (0 = illimité)
 input bool            InpUseAdaptiveRisk  = false;             // Risque adaptatif (mémoire des derniers trades)
 input int             InpAdaptiveWindow   = 60;                // Nombre de trades mémorisés
 input double          InpAdaptiveFactor   = 0.5;               // Multiplicateur de risque si le bilan récent est négatif
 input int             InpMaxConsecLosses  = 3;                 // Pertes consécutives max par jour (0 = off)
-input double          InpMaxVolatility    = 3.0;               // Pas de trade si ATR actuel > x fois l'ATR moyen (choc de volatilité, 0 = off)
+input double          InpMaxVolatility    = 1.1;               // Filtre volatilité : pas de trade si ATR H1 > x fois sa moyenne 10 jours (0 = off)
 input int             InpMaxSpreadPoints  = 20;                // Spread max en points (0 = automatique)
 input double          InpMaxSpreadPctSL   = 10.0;              // Spread max en % de la distance du SL
 input int             InpSlippagePoints   = 10;                // Glissement max (points)
 
 input group "=== Horaires ==="
 input ENUM_TIME_BASE  InpTimeBase         = TIME_BASE_SERVER;  // Référence horaire de la session
-input int             InpSessionStart     = 10;                // Début de la fenêtre d'entrée (heure)
+input int             InpSessionStart     = 11;                // Début de la fenêtre d'entrée (heure)
 input int             InpSessionEnd       = 14;                // Fin de la fenêtre d'entrée (heure, exclue)
 input int             InpFridayLastEntry  = 18;                // Vendredi : pas de nouveau trade à partir de (heure serveur, -1 = off)
 input int             InpFridayCloseHour  = 22;                // Vendredi : fermeture des positions (heure serveur, -1 = off)
@@ -1539,7 +1540,7 @@ bool CanOpenNewTrade(const datetime entryBarTime, string &why)
       if(GetIndicatorValue(g_hATR, 0, 1, atrNow) && GetIndicatorValue(g_hATRLong, 0, 1, atrLong) && atrLong > 0.0 &&
          atrNow > InpMaxVolatility * atrLong)
         {
-         why = StringFormat("Choc de volatilité (ATR x%.1f la normale)", atrNow / atrLong);
+         why = StringFormat("Volatilité trop élevée (ATR H1 = %.2f x sa moyenne > %.2f)", atrNow / atrLong, InpMaxVolatility);
          return false;
         }
      }
@@ -1694,31 +1695,27 @@ string ForecastText(const datetime now)
       return "symbole non pris en charge";
    int h = SessionHour(now);
    if(!HourInWindow(h, InpSessionStart, InpSessionEnd))
-      return "aucun avantage statistique mesuré à cette heure (14 ans) - le robot observe";
+      return "aucun avantage statistique mesuré à cette heure (19 ans de données MT5) - le robot observe";
    double win = 0.0, er = 0.0;
-   if(h == 10)
-     {
-      win = 68.0;
-      er = 0.067;
-     }
+   // statistiques du robot v5 sur 19 ans de données MT5 réelles (EURUSD 2007-2025)
    if(h == 11)
      {
-      win = 72.0;
-      er = 0.061;
+      win = 71.0;
+      er = 0.049;
      }
    if(h == 12)
      {
-      win = 76.0;
-      er = 0.051;
+      win = 72.0;
+      er = 0.035;
      }
    if(h == 13)
      {
-      win = 81.0;
-      er = 0.055;
+      win = 77.0;
+      er = 0.067;
      }
    if(win <= 0.0)
       return "fenêtre ouverte (heure hors statistiques de référence)";
-   return StringFormat("vente favorable - sur 14 ans, les entrées de %dh ont gagné %.0f%% du temps (%+.3f R/trade)", h, win, er);
+   return StringFormat("vente favorable - sur 19 ans, les entrées de %dh ont gagné %.0f%% du temps (%+.3f R/trade)", h, win, er);
   }
 
 string MarketAnalysisText(const datetime now)
@@ -1731,7 +1728,8 @@ string MarketAnalysisText(const datetime now)
    if(GetIndicatorValue(g_hATR, 0, 1, atr) && GetIndicatorValue(g_hATRLong, 0, 1, atrL) && atrL > 0.0)
      {
       double r = atr / atrL;
-      vol = ((r < 0.8) ? "calme" : ((r > 1.3) ? "agitée" : "normale")) + StringFormat(" (x%.2f)", r);
+      vol = ((r < 0.8) ? "calme" : ((r > 1.3) ? "agitée" : "normale")) + StringFormat(" (x%.2f", r) +
+            ((InpMaxVolatility > 0.0) ? StringFormat(", seuil %.2f : %s)", InpMaxVolatility, (r <= InpMaxVolatility) ? "OK" : "trop élevée") : ")");
      }
    MqlTick tk;
    double pos = 50.0;
@@ -1744,10 +1742,14 @@ string MarketAnalysisText(const datetime now)
    s += "Filtre du jour : " + ((InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR) ? "FAVORABLE" : "défavorable (pas de trade aujourd'hui)") +
         StringFormat(" - amplitude de la veille %.1f x ATR (seuil %.1f)", prevATR, InpMinPrevRangeATR) + "\n";
    bool dayOK = (InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR);
+   bool volOK = (InpMaxVolatility <= 0.0 || atrL <= 0.0 || atr <= InpMaxVolatility * atrL);
    string newsInfo = "";
    string forecast = ForecastText(now);
    if(!dayOK)
       forecast = "conditions du jour défavorables (filtre) - le robot ne trade pas aujourd'hui";
+   else
+      if(!volOK)
+         forecast = "volatilité horaire trop élevée - le robot attend un marché plus calme";
    else
       if(IsNewsBlackout(now, newsInfo))
          forecast = "pause pendant l'annonce (" + newsInfo + ") - " + forecast;
