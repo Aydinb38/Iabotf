@@ -19,17 +19,18 @@
 //|   - mise pondérée selon l'heure (appris sur 2007-2018) : x1,5 à  |
 //|     8h, x1 de 9h à 12h, x0,6 à 12h, x0,4 à 13h, x0,2 à 14h.      |
 //|                                                                  |
-//|  Gestion : SL = 3 x ATR(14) H1, TP = 2 R, break-even à +0,7 R.   |
+//|  Gestion : SL = 3 x ATR(14) H1, TP = 2 R, break-even à +0,7 R,   |
+//|  70 % de la position encaissés à +1 R (moins de drawdown).       |
 //|  Sortie à 15h si la position est en gain, sinon elle est gardée  |
 //|  et fermée dès qu'elle repasse en gain, au plus tard à 17h.      |
 //|  Temps réel : liste des contrôles, tendances M5/H1/H4/D1, ADX,   |
 //|  MACD, Bollinger, RSI, pivots, volatilité, calendrier MT5.       |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "9.10"
+#property version     "10.00"
 #property description "Robot autonome 100 % EURUSD (M5) : séance européenne 8h-15h, jusqu'à 10 trades/jour,"
 #property description "rebonds étirés (RSI + Bollinger), 10 contrôles avant chaque trade (calendrier, veille, volatilité,"
-#property description "news...), mise pondérée selon l'heure (x1,5 à 8h), SL 3 ATR H1, TP 2 R, BE 0,7 R, sortie 15h-17h."
+#property description "news...), mise pondérée selon l'heure, SL 3 ATR H1, TP 2 R, BE 0,7 R, 70 % encaissés à +1 R, sortie 15h-17h."
 
 //+------------------------------------------------------------------+
 //| Enumerations                                                      |
@@ -43,10 +44,10 @@ enum ENUM_RISK_MODE
 
 enum ENUM_RISK_PROFILE
   {
-   RISK_PROFILE_PRUDENT  = 0, // Prudent : 0,30 % (drawdown 19 ans ~12 %)
-   RISK_PROFILE_BALANCED = 1, // Équilibré : 0,35 % (drawdown ~14 %)
-   RISK_PROFILE_DYNAMIC  = 2, // Dynamique : 0,40 % (drawdown ~15,5 %)
-   RISK_PROFILE_MAXIMUM  = 3  // Maximum : 0,45 % (drawdown ~17,5 %)
+   RISK_PROFILE_PRUDENT  = 0, // Prudent : 0,33 % (drawdown 19 ans ~11,5 %)
+   RISK_PROFILE_BALANCED = 1, // Équilibré : 0,39 % (drawdown ~13,5 %)
+   RISK_PROFILE_DYNAMIC  = 2, // Dynamique : 0,44 % (drawdown ~15 %)
+   RISK_PROFILE_MAXIMUM  = 3  // Maximum : 0,50 % (drawdown ~17,5 %)
   };
 
 enum ENUM_FX_DIRECTION
@@ -100,9 +101,9 @@ input double            InpBE_LockR         = 0.1;               // Gain verroui
 input bool              InpUseTrailing      = false;             // Activer le trailing stop
 input double            InpTrailStartR      = 2.0;               // Trailing actif à partir de +R
 input double            InpTrailDistR       = 1.5;               // Distance du trailing (R)
-input bool              InpUsePartialClose  = false;             // Clôture partielle
-input double            InpPartialAtR       = 0.5;               // Clôture partielle à +R (doit être inférieur au TP)
-input double            InpPartialPercent   = 50.0;              // % du volume clôturé
+input bool              InpUsePartialClose  = true;              // Clôture partielle (encaisse une partie du gain)
+input double            InpPartialAtR       = 1.0;               // Clôture partielle à +R (doit être inférieur au TP)
+input double            InpPartialPercent   = 70.0;              // % du volume clôturé
 input int               InpMaxHoldHours     = 0;                 // Durée max d'un trade en heures (0 = illimitée)
 
 input group "=== Gestion du risque ==="
@@ -526,13 +527,13 @@ double ProfileRiskPercent()
    switch(InpRiskProfile)
      {
       case RISK_PROFILE_PRUDENT:
-         return 0.30;
+         return 0.33;
       case RISK_PROFILE_DYNAMIC:
-         return 0.40;
+         return 0.44;
       case RISK_PROFILE_MAXIMUM:
-         return 0.45;
+         return 0.50;
       default:
-         return 0.35;
+         return 0.39;
      }
   }
 

@@ -28,9 +28,9 @@ PROFILES = {
                extra=["--set", "InpExitHour=13"]),
     # IABot EURUSD v3 : profil « taux de réussite » (sortie en gain, maintien jusqu'à 17 h), filtre d'amplitude, 3 positions espacées d'1 h, risque 0,5 %
     # EA EURUSD v9 (100 % EURUSD) : ventes 8h-15h, 10 positions/jour (15 min d'écart), SL 3 ATR, TP 2 R, BE 0,7 R, sortie 15h-17h,
-    # risque de base 0,35 % pondéré selon l'heure (x1,5 à 8h ... x0,2 à 14h)
-    "eurusd": dict(title="IABot_EURUSD v9.1", sym="EURUSD", tp=2.0, trailing=False, win=(8, 15), win_incl_end=False, exit_hour=17,
-                   max_day=10, max_pos=10, min_gap=15, risk=0.35, risk_max_mult=1.5, adaptive=True, eurusd_only=True,
+    # risque de base 0,39 % pondéré selon l'heure (x1,5 à 8h ... x0,2 à 14h), 70 % encaissés à +1 R
+    "eurusd": dict(title="IABot_EURUSD v10", sym="EURUSD", tp=2.0, trailing=False, win=(8, 15), win_incl_end=False, exit_hour=17,
+                   max_day=10, max_pos=10, min_gap=15, risk=0.39, risk_max_mult=1.5, adaptive=True, eurusd_only=True,
                    risk_pairs=[("GBPUSD", []), ("EURJPY", [])], gmt=(6, 13),
                    min_trades=500, min_be=20, extra=["--set", "InpExitHour=13", "--set", "InpHoldUntilHour=15"]),
 }

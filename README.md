@@ -1,4 +1,4 @@
-# IABot EURUSD v9.1 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
+# IABot EURUSD v10 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
 
 Expert Advisor **entièrement automatique**, qui travaille **uniquement sur EURUSD**. Il ne lit **aucune autre paire** :
 un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout seul :
@@ -14,7 +14,8 @@ un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout s
   - nombre de positions déjà ouvertes ;
 - il **mise plus quand ses chances sont les meilleures** : ×1,5 à 8 h (l'heure la plus rentable), puis de moins en
   moins jusqu'à ×0,2 à 14 h ;
-- il pose **immédiatement le Stop Loss et le Take Profit**, puis passe au **break-even** ;
+- il pose **immédiatement le Stop Loss et le Take Profit**, passe au **break-even**, puis **encaisse 70 % du gain dès
+  +1 R** ;
 - il **sort en gain chaque fois que c'est possible** : environ **73 % de trades gagnants** ;
 - il ne prend pas de position autour des **annonces économiques** (calendrier MT5 en direct) ;
 - il affiche le **gain du mois en cours et du mois précédent** ;
@@ -31,40 +32,48 @@ Aucun robot ne peut garantir des gains, et aucun ne rend milliardaire. Celui-ci 
 Les chiffres ci-dessous viennent du **vrai code du robot**, exécuté sur **19 ans de données MT5 réelles (EURUSD 2007-2025)**,
 avec l'heure serveur exacte et le spread réel de chaque minute, puis sur 2026. Commencez **sur un compte démo**.
 
-## 1. Ce qui a changé (v8 → v9) : le plus rentable des neuf
+## 1. Ce qui a changé (v9.1 → v10) : moins de pertes, plus de gain chaque mois
 
-La v8 rapportait moins que la v7. Pour comprendre pourquoi, chaque réglage a été revérifié avec une méthode plus
-stricte : il est appris sur **2007-2018 uniquement**, puis jugé sur **2019-2025 et 2026**, des données qu'il n'a
-jamais vues.
+Point de départ : votre backtest MT5 de la v9.1.
 
-- **Retiré.** Deux filtres de la v8 ne tenaient pas sur 2007-2018 : la « nuit asiatique » et le seuil de volatilité
-  à 0,9. Ils marchaient par hasard sur la période récente. La v9 revient au cœur de la v7, plus robuste : stop à
-  3 ATR, break-even à 0,7 R, volatilité ≤ 1,0.
-- **Ajouté : la mise selon l'heure, apprise sur 2007-2018.** Sur 2007-2018, une entrée à 8 h rapportait 2 fois plus
-  qu'à 9 h-11 h, et 5 fois plus qu'à 14 h. Le robot mise donc ×1,5 à 8 h, ×1 à 9 h, ×0,9 à 10 h, ×1 à 11 h, ×0,6 à
-  12 h, ×0,4 à 13 h et ×0,2 à 14 h. Testé sur 2019-2025 et 2026, cela améliore le résultat.
-- **Gardé de la v8.** Les **10 contrôles visibles avant chaque trade**.
-- **Testé et rejeté.**
-  - Plus de positions par jour (12 à 15), départ à 7 h, mise réduite après une série de pertes : à risque égal,
-    tout cela rapporte moins.
-  - Prendre aussi les signaux « moyens » avec une petite mise : sur données jamais vues, cela rapporte moins que de
-    ne garder que les meilleurs.
+| Votre rapport MT5 (v9.1) | Valeur |
+|---|---:|
+| Profit net (50 000 $ au départ) | +405 443 $ |
+| Positions gagnantes | 74,6 % |
+| Ratio de Sharpe | 3,97 |
+| Drawdown | 11,5 % |
+| Gain moyen par trade gagnant | +299 $ |
+| Perte moyenne par trade perdant | -660 $ |
 
-**Comparaison des versions avec les réglages par défaut** (émulateur, mêmes données propres) :
+Les pertes étaient en moyenne **2 fois plus grosses que les gains**. Votre graphique MFE montrait aussi beaucoup de
+trades d'abord gagnants qui finissaient en perte. Ces points ont été attaqués un par un, directement dans le vrai code
+du robot (émulateur, 19 ans de données) :
 
-| | v7 | v8 | **v9** |
-|---|---:|---:|---:|
-| 19 ans (2007-2025, 10 000 $) | +4 220 % | +3 379 % | **+7 358 %** |
-| Votre période 2019-2025 (50 000 $) | +142 847 $ | +163 062 $ | **+177 327 $ (+355 %)** |
-| 2026 (avr. → sept., jamais vu) | +2,2 % | +3,6 % | **+4,0 %** |
-| % gagnants (19 ans) | 72,9 % | 76,7 % | 72,9 % |
-| Drawdown max (19 ans) | 13,0 % | 13,3 % | 13,7 % |
+| Essai | Résultat |
+|---|---|
+| **Encaisser 70 % de la position dès +1 R** | **Retenu.** Même gain, mais drawdown -10 %. Les trades déjà bien gagnants ne peuvent plus finir en perte. |
+| Stop 3,5 ATR + break-even dès 0,5 R | 76 % de positions gagnantes, mais 2 fois moins de bénéfice : rejeté. |
+| Supprimer les entrées de 14 h | Légèrement moins bon sur 19 ans (elles pèsent déjà 0,2) : gardées. |
+| Fermer les positions en perte à 16 h au lieu de 17 h | Identique : 17 h est gardé. |
+| Encaisser plus tôt (0,5 ou 0,7 R) ou moins (30 %) | Moins bon que 70 % à +1 R. |
 
-Le drawdown reste au même niveau, donc la v9 ne prend pas plus de risque : elle gagne plus parce qu'elle mise au bon
-moment. Elle est **1,7 fois plus rentable que la v7 sur 19 ans**, et meilleure que la v7 et la v8 sur chacune des trois
-périodes.
+Comme la clôture partielle réduit le drawdown, le robot peut **miser un peu plus pour le même risque** que la v9.1.
+Le profil Équilibré passe de 0,35 % à 0,39 %.
 
-## 1 bis. Recherche v10 : tout ce qui a été essayé pour gagner plus (et pourquoi c'est rejeté)
+**Même risque, plus de gain :**
+
+| Drawdown max ≈ 13,5 % | v9.1 | **v10** |
+|---|---:|---:|
+| 19 ans (2007-2025, 10 000 $) | +7 358 % | **+11 853 %** |
+| Votre période 2019-2025 (50 000 $) | +177 327 $ | **+224 833 $** |
+| Gain mensuel moyen (2019-2025) | +2 111 $ | **+2 677 $** |
+| 2026 (avr. → sept.) | +4,0 % | +3,3 % |
+
+**Taux de réussite dans votre rapport MT5.** MT5 compte chaque fermeture comme un « trade ». Chaque encaissement de
+70 % est un trade gagnant de plus, donc le pourcentage affiché par MT5 devrait monter vers **77-78 %**. Compté par
+position, il reste d'environ 73-74 %.
+
+## 1 bis. Recherche : tout ce qui a été essayé pour gagner plus (et pourquoi c'est rejeté)
 
 Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 2007-2018 et jugés sur 2019-2025 et 2026 :
 
@@ -73,64 +82,41 @@ Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 
 | Ne plus ajouter de vente si les positions ouvertes perdent | **Moins bon.** Revendre plus haut quand le marché monte reste rentable : le retour à la moyenne finit par jouer. |
 | Plus de positions par jour (15, 20), entrées plus rapprochées | Plus de trades, mais moins de gain à drawdown égal : les positions d'une même journée sont liées. |
 | Vendre plus haut avec un ordre limite (+0,05 à +0,5 ATR) | **Moins bon.** Le robot rate les meilleurs trades, ceux qui repartent tout de suite à la baisse. |
-| Prendre le gain plus tôt (TP 0,5 R à 1 R) | Jusqu'à 80 % de gagnants, mais 2 à 8 fois moins de bénéfice. |
+| Prendre tout le gain plus tôt (TP 0,5 R à 1 R) | Jusqu'à 80 % de gagnants, mais 2 à 8 fois moins de bénéfice. |
 | Cassure de la nuit asiatique, à l'achat ou à la vente | **Perdant** sur 19 ans (2 à 10 années positives sur 19 seulement). |
 | Suivi de tendance journalier (Donchian 20/10) | **Perdant** depuis 2013 : l'EURUSD revient vers sa moyenne bien plus qu'il ne suit les tendances. |
 | Filtres de régime (tendance journalière, hebdomadaire…) | Aucun ne se comporte de la même façon sur 2007-2018 et sur 2019-2025 : ce serait du hasard. |
+| Filtres « nuit asiatique » et volatilité 0,9 (v8) | Sans effet sur 2007-2018 : retirés en v9. |
 
-**Conclusion honnête.** Sur 19 ans de données EURUSD, la stratégie de la v9 est à la limite de ce que les données
-permettent. Le levier qui reste pour gagner plus chaque mois est la **mise par trade**. La v9.1 la rend simple à
-choisir avec un **profil de risque**. Plus de gain veut toujours dire un drawdown plus profond.
-
-**Les 4 profils** (votre période 2019-2025, 50 000 $ au départ, gains composés) :
+**Les 4 profils v10** (votre période 2019-2025, 50 000 $ au départ, gains composés) :
 
 | Profil (paramètre « Profil de risque ») | Mise de base | Gain mensuel moyen | Gain total 2019-2025 | Pire mois | Drawdown max |
 |---|---:|---:|---:|---:|---:|
-| Prudent | 0,30 % | +1 606 $ | +134 943 $ | -5 890 $ | 11,8 % |
-| **Équilibré (défaut)** | 0,35 % | **+2 111 $** | **+177 327 $** | -7 794 $ | 13,7 % |
-| Dynamique | 0,40 % | +2 708 $ | +227 450 $ | -10 825 $ | 15,5 % |
-| Maximum | 0,45 % | +3 354 $ | +281 754 $ | -14 565 $ | 17,7 % |
+| Prudent | 0,33 % | +1 951 $ | +163 844 $ | -6 940 $ | 11,6 % |
+| **Équilibré (défaut)** | 0,39 % | **+2 677 $** | **+224 833 $** | -10 301 $ | 13,5 % |
+| Dynamique | 0,44 % | +3 358 $ | +282 073 $ | -13 756 $ | 15,3 % |
+| Maximum | 0,50 % | +4 338 $ | +364 409 $ | -19 515 $ | 17,5 % |
 
-- **Régularité.** Pour tous les profils, environ 7 mois sur 10 sont positifs. Les gains mensuels augmentent avec le
-  temps, car ils sont composés.
-- **Pas de profil plus agressif.** Au-delà de 0,45 %, le drawdown atteint le coupe-circuit de 20 %, ce qui arrête
-  le robot. Il n'y a donc pas de profil au-dessus.
+- **Régularité.** Pour tous les profils, 7 mois sur 10 sont positifs. Le gain mensuel médian du profil Équilibré
+  est de +3 156 $.
+- **Pas de profil plus agressif.** Au-delà de 0,50 %, le drawdown approche le coupe-circuit de 20 %.
 
-## 2. Résultats v9 (réglages par défaut : risque de base 0,35 %)
+## 2. Résultats v10 (réglages par défaut : profil Équilibré)
 
-| Données | Trades | **% gagnants** | Profit factor | Résultat | Drawdown max |
+| Données | Trades | **% gagnants** (par position) | Profit factor | Résultat | Drawdown max |
 |---|---:|---:|---:|---:|---:|
-| **MT5 réel 2007 → 2025** (19 ans, 10 000 $) | 11 895 | **72,9 %** | 1,37 | **+7 358 %** | 13,7 % |
-| **Votre période 2019 → 2025** (50 000 $) | 5 012 | **73,7 %** | 1,35 | **+177 327 $** | 13,7 % |
-| **2026** (avr. → sept., jamais utilisé pour régler le robot) | 245 | **73,1 %** | 1,21 | +4,0 % | 6,3 % |
+| **MT5 réel 2007 → 2025** (19 ans, 10 000 $) | 11 873 | **72,9 %** | 1,36 | **+11 853 %** | 13,5 % |
+| **Votre période 2019 → 2025** (50 000 $) | 4 995 | **73,7 %** | 1,34 | **+224 833 $** | 13,5 % |
+| **2026** (avr. → sept., jamais utilisé pour régler le robot) | 245 | **73,1 %** | 1,15 | +3,3 % | 7,1 % |
 
-**Les 19 années sont positives** (19 ans, départ 10 000 $, gains composés) :
-
-| Année | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Trades | 441 | 511 | 565 | 546 | 533 | 564 | 604 | 637 | 656 | 577 | 549 | 701 | 638 | 759 | 702 | 706 | 781 | 790 | 635 |
-| % gagnants | 67 | 72 | 79 | 74 | 72 | 71 | 67 | 73 | 72 | 74 | 74 | 74 | 72 | 73 | 77 | 74 | 74 | 71 | 75 |
-
-**Votre période (50 000 $) année par année :**
+**Les 19 années sont positives.** Sur votre période (50 000 $) :
 
 | | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Gain | +16 800 $ | +16 877 $ | +20 591 $ | +26 100 $ | +37 740 $ | +14 748 $ | +44 469 $ |
+| Gain | +20 214 $ | +22 694 $ | +29 168 $ | +31 704 $ | +49 589 $ | +13 792 $ | +57 672 $ |
 
-En moyenne, le robot gagne **+2 111 $ par mois** sur cette période. Environ **7 mois sur 10** sont positifs, et
-**8 trimestres sur 10**.
-
-**Selon le risque choisi** (19 ans, 10 000 $ au départ) :
-
-| Risque de base par trade | Résultat 19 ans | Drawdown max |
-|---|---:|---:|
-| 0,30 % (prudent) | +3 940 % | 11,8 % |
-| **0,35 % (défaut)** | **+7 358 %** | **13,7 %** |
-| 0,40 % (agressif) | +13 459 % | 15,5 % |
-
-- **Risque plus élevé.** Au-delà de 0,40 %, le drawdown approche du coupe-circuit de 20 %.
-- **Frais.** Avec 0,3 pip de frais en plus sur chaque trade, le résultat sur 19 ans reste positif : +3 178 %, PF 1,32,
-  drawdown 14,7 %.
+**Frais.** Avec 0,3 pip de frais en plus sur chaque trade, le résultat sur 19 ans reste positif : +4 471 %, PF 1,31,
+drawdown 15 %.
 
 Le détail est dans [`results/backtest_results_eurusd.csv`](results/backtest_results_eurusd.csv).
 
@@ -169,10 +155,10 @@ repose sur des règles apprises sur 2007-2018 et confirmées sur des données ja
 | Signal | Rebond M5 étiré : **RSI(3) > 65** et clôture à plus de **1,5 écart-type** au-dessus de la moyenne 20 (Bollinger). |
 | Fréquence | **10 positions par jour** au maximum, avec au moins **15 min** entre deux entrées. |
 | Stop Loss | **3 × ATR(14) H1**. Cette distance définit « 1 R ». |
-| Take Profit | **2 R**, posé à l'ouverture. |
+| Take Profit | **2 R**, posé à l'ouverture. **70 % de la position sont encaissés à +1 R.** |
 | Break-even | À **+0,7 R**, le stop passe à l'entrée + 0,1 R. |
 | Sortie | À **15 h** pour les positions en gain. Les positions en perte sont gardées et fermées dès qu'elles atteignent +0,05 R, au plus tard à **17 h**. |
-| Mise | **0,35 %** de base par trade × **1,5 à 8 h**, 1 à 9 h, 0,9 à 10 h, 1 à 11 h, 0,6 à 12 h, 0,4 à 13 h, **0,2 à 14 h**. |
+| Mise | **0,39 %** de base par trade (profil Équilibré) × **1,5 à 8 h**, 1 à 9 h, 0,9 à 10 h, 1 à 11 h, 0,6 à 12 h, 0,4 à 13 h, **0,2 à 14 h**. |
 
 ## 5. Ce que le robot affiche en temps réel
 
@@ -187,12 +173,12 @@ Filtre du jour : FAVORABLE - amplitude de la veille 11.0 x ATR (seuil 6.0)
 Prévision : vente favorable - sur 19 ans, les entrées de 10h ont gagné 70% du temps (+0.089 R/trade)
 Contrôles avant trade (9/10) : fenêtre OK | calendrier OK | veille 11.0 OK | nuit Asie 1.9 OK | volatilité 0.59 OK | news OK | spread OK | RSI 66 OK | Bollinger -0.6 NON | positions OK
 News : USD US CPI m/m à 2025.03.12 15:30
-Mémoire : 60 trades, bilan 6.9 R  ->  risque normal
-Risque/trade : 0.32% (base 0.35% x0.9 selon l'heure)   |   Trades du jour : 2/10
-Ce mois-ci : 0.00 USD (2 trades)   |   Mois précédent : 160.68 USD
-Résultat du jour : 0.00 USD   |   Drawdown : 0.65% (max 20.0%)
-Position : VENTE 0.11 @ 1.09040  SL 1.09358  TP 1.08403  (0.20 R, 7.04 USD)
-Position : VENTE 0.15 @ 1.09018  SL 1.09352  TP 1.08350  (0.13 R, 6.30 USD)
+Mémoire : 60 trades, bilan 6.5 R  ->  risque normal
+Risque/trade : 0.35% (base 0.39% x0.9 selon l'heure)   |   Trades du jour : 2/10
+Ce mois-ci : 0.00 USD (2 trades)   |   Mois précédent : 148.35 USD
+Résultat du jour : 0.00 USD   |   Drawdown : 0.74% (max 20.0%)
+Position : VENTE 0.12 @ 1.09040  SL 1.09358  TP 1.08403  (0.20 R, 7.68 USD)
+Position : VENTE 0.17 @ 1.09018  SL 1.09352  TP 1.08350  (0.13 R, 7.14 USD)
 Statut : Rebond pas assez étiré : Bollinger -0.59 écart-type (seuil 1.50)
 ```
 *(panneau réel produit par l'émulateur le 12/03/2025 à 10h40, compte de 10 000 $ ; la « nuit Asie » est affichée
@@ -244,7 +230,8 @@ pour information, ce n'est plus un filtre)*
 
 | Paramètre | Défaut | Rôle |
 |---|---|---|
-| Profil de risque | Équilibré (0,35 %) | Prudent 0,30 / Équilibré 0,35 / Dynamique 0,40 / Maximum 0,45 (voir tableau 1 bis). |
+| Profil de risque | Équilibré (0,39 %) | Prudent 0,33 / Équilibré 0,39 / Dynamique 0,44 / Maximum 0,50 (voir tableau 1 bis). |
+| Clôture partielle | oui, 70 % à +1 R | Encaisse la plus grande partie du gain. |
 | Risque personnalisé (%) | 0 | Si > 0, remplace le profil. |
 | Mise pondérée selon l'heure | oui | ×1,5 à 8 h … ×0,2 à 14 h. |
 | Positions simultanées / trades par jour | 10 / 10 | |
@@ -301,7 +288,7 @@ build/eurusd/emu --data data/m1/EURUSD_MT5c.csv --symbol EURUSD --commission 0
 ## 11. Contenu du dépôt
 
 ```
-MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v9.1, 100 % EURUSD)
+MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v10, 100 % EURUSD)
 MQL5/Experts/IABot/IABot_FX_M5.mq5   ← ancien robot, non maintenu
 MQL5/Experts/IABot/IABot_M5.mq5      ← ancien robot (or), non maintenu
 results/                             ← résultats détaillés
