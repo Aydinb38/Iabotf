@@ -1,16 +1,16 @@
-# Vérification automatique de IABot_EURUSD v9.1
+# Vérification automatique de IABot_EURUSD v10
 **19/19 scénarios réussis**
 
 ## ✅ 1. Référence EURUSD 2014-2017 : SL/TP/BE/trailing/risque/horaires conformes
-_2452 trades, gain 75.8%, PF 1.41, DD 13.59%_
-- OK  nombre de trades suffisant (2452)
+_2447 trades, gain 75.8%, PF 1.43, DD 13.52%_
+- OK  nombre de trades suffisant (2447)
 - OK  chaque position a un SL et un TP dès l'ouverture
 - OK  TP = 2 R (min 1.991 max 2.008, arrondi au point)
 - OK  perte max par trade bornée (-1.67 R, gaps d'annonces inclus ; 11 trade(s) sous -1,15 R)
-- OK  risque par trade <= 0.525 % (+commission) : max 0.544 %
-- OK  risque médian cohérent avec la cible (0.322 %, risque adaptatif inclus)
+- OK  risque par trade <= 0.585 % (+commission) : max 0.610 %
+- OK  risque médian cohérent avec la cible (0.360 %, risque adaptatif inclus)
 - OK  aucun échec d'ordre dans le journal
-- OK  break-even à +0,1 R vérifié sur 836 déplacements (écarts : 0)
+- OK  break-even à +0,1 R vérifié sur 833 déplacements (écarts : 0)
 - OK  trailing désactivé par défaut : aucun déplacement de trailing
 - OK  entrées uniquement dans la fenêtre 8h-15h (heure serveur)
 - OK  toutes les positions fermées au plus tard à 17h le jour même
@@ -33,7 +33,7 @@ _2452 trades, gain 75.8%, PF 1.41, DD 13.59%_
 - OK  RETURN : mêmes trades que la référence (559 vs 559)
 
 ## ✅ 4. Requotes aléatoires (30 % des ordres) : nouvelles tentatives automatiques
-- OK  requotes simulés (419)
+- OK  requotes simulés (449)
 - OK  trades quasi identiques (559 vs 559)
 - OK  SL toujours posé malgré les requotes
 
@@ -55,7 +55,7 @@ _2452 trades, gain 75.8%, PF 1.41, DD 13.59%_
 - OK  mode netting détecté
 
 ## ✅ 9. Clôture partielle activée : une seule fois par position
-- OK  clôtures partielles exécutées (231)
+- OK  clôtures partielles exécutées (74)
 - OK  jamais deux clôtures partielles sur la même position
 
 ## ✅ 10. Limite de perte journalière (risque 4 %, limite 3 %) : arrêt pour la journée
@@ -82,19 +82,19 @@ _2452 trades, gain 75.8%, PF 1.41, DD 13.59%_
 - OK  option activée : position gardée en perte fermée avant la news de 15 h 30 (55 fermeture(s) sur 20 jours testés, 0 après la news)
 
 ## ✅ 15. Session en heure GMT (testeur, décalage auto été/hiver US)
-- OK  entrées entre 6h et 13h GMT (579 trades)
+- OK  entrées entre 6h et 13h GMT (577 trades)
 
 ## ✅ 16. Paramètres invalides : initialisation refusée
 - OK  INIT_PARAMETERS_INCORRECT renvoyé
 
 ## ✅ 17. Redémarrage du terminal en pleine position : reprise de la gestion (persistance)
 - OK  position(s) ouverte(s) au moment de l'arrêt (2)
-- OK  la position #1632 est toujours gérée après redémarrage
-- OK  résultat final identique à 1 % près (10477.27 vs 10477.27)
+- OK  la position #1660 est toujours gérée après redémarrage
+- OK  résultat final identique à 1 % près (10711.30 vs 10711.30)
 
 ## ✅ 19. Risque adaptatif : réduction après une série négative, retour à la normale, mémoire persistante
-- OK  bascule en mode réduit (25 fois) et retour à la normale (25 fois)
-- OK  chaque entrée utilise le bon risque (2467 entrées conformes, 0 écarts)
+- OK  bascule en mode réduit (24 fois) et retour à la normale (24 fois)
+- OK  chaque entrée utilise le bon risque (2464 entrées conformes, 0 écarts)
 
 ## ✅ 18. Exécution instrumentée (AddressSanitizer + UBSan + division par zéro) sur toutes les données
 - OK  AUDUSD_IS.csv : aucune erreur mémoire / UB / division par zéro (0 trades)
@@ -110,10 +110,10 @@ _2452 trades, gain 75.8%, PF 1.41, DD 13.59%_
 - OK  EURJPY_IS.csv : aucune erreur mémoire / UB / division par zéro (0 trades)
 - OK  EURJPY_OOS2018.csv : aucune erreur mémoire / UB / division par zéro (0 trades)
 - OK  EURJPY_OOS2026.csv : aucune erreur mémoire / UB / division par zéro (0 trades)
-- OK  EURUSD_ALL.csv : aucune erreur mémoire / UB / division par zéro (8223 trades)
-- OK  EURUSD_IS.csv : aucune erreur mémoire / UB / division par zéro (2452 trades)
-- OK  EURUSD_MT5c.csv : aucune erreur mémoire / UB / division par zéro (11892 trades)
-- OK  EURUSD_OOS2018.csv : aucune erreur mémoire / UB / division par zéro (495 trades)
+- OK  EURUSD_ALL.csv : aucune erreur mémoire / UB / division par zéro (8207 trades)
+- OK  EURUSD_IS.csv : aucune erreur mémoire / UB / division par zéro (2447 trades)
+- OK  EURUSD_MT5c.csv : aucune erreur mémoire / UB / division par zéro (11867 trades)
+- OK  EURUSD_OOS2018.csv : aucune erreur mémoire / UB / division par zéro (494 trades)
 - OK  EURUSD_OOS2026.csv : aucune erreur mémoire / UB / division par zéro (245 trades)
 - OK  GBPJPY_IS.csv : aucune erreur mémoire / UB / division par zéro (0 trades)
 - OK  GBPJPY_OOS2018.csv : aucune erreur mémoire / UB / division par zéro (0 trades)
