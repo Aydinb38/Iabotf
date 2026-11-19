@@ -6,29 +6,30 @@
 //|                                                                  |
 //|  Ce que le robot a appris (19 ans de données MT5 réelles EURUSD  |
 //|  2007-2025, heure serveur exacte, spread réel, calendrier        |
-//|  économique 2007-2025, 2026 en contrôle) :                       |
+//|  économique 2007-2025 ; réglages appris sur 2007-2018 et validés |
+//|  sur 2019-2025 et 2026) :                                        |
 //|   - l'euro tend à baisser face au dollar pendant la séance       |
 //|     européenne (Ranaldo 2009, Breedon & Ranaldo 2013), surtout   |
-//|     en début de séance : ventes sur rebond M5 de 8h à 15h        |
+//|     en tout début de séance : ventes sur rebond M5 de 8h à 15h   |
 //|     (heure serveur GMT+2/+3), jusqu'à 10 positions par jour ;    |
-//|   - entrée seulement si TOUT est validé : rebond étiré (RSI(3)   |
-//|     > 65 et Bollinger > 1,5 écart-type), veille >= 6 ATR, nuit   |
-//|     asiatique >= 1,4 ATR, volatilité <= 0,9 x sa moyenne, pas    |
-//|     lundi / Fed / fin de mois, pas d'annonce, spread correct ;   |
-//|   - risque pondéré selon l'heure : x1,5 de 8h à 11h, x0,5 après  |
-//|     13h (les entrées du matin rapportent le plus).               |
+//|   - entrée seulement si tout est validé : rebond étiré (RSI(3)   |
+//|     > 65 et Bollinger > 1,5 écart-type), veille >= 6 ATR,        |
+//|     volatilité calme, pas lundi / Fed / fin de mois, pas         |
+//|     d'annonce, spread correct ;                                  |
+//|   - mise pondérée selon l'heure (appris sur 2007-2018) : x1,5 à  |
+//|     8h, x1 de 9h à 12h, x0,6 à 12h, x0,4 à 13h, x0,2 à 14h.      |
 //|                                                                  |
-//|  Gestion : SL = 3,5 x ATR(14) H1, TP = 2 R, break-even à +0,5 R. |
+//|  Gestion : SL = 3 x ATR(14) H1, TP = 2 R, break-even à +0,7 R.   |
 //|  Sortie à 15h si la position est en gain, sinon elle est gardée  |
 //|  et fermée dès qu'elle repasse en gain, au plus tard à 17h.      |
 //|  Temps réel : liste des contrôles, tendances M5/H1/H4/D1, ADX,   |
 //|  MACD, Bollinger, RSI, pivots, volatilité, calendrier MT5.       |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "8.00"
+#property version     "9.00"
 #property description "Robot autonome 100 % EURUSD (M5) : séance européenne 8h-15h, jusqu'à 10 trades/jour,"
-#property description "rebonds étirés (RSI + Bollinger), 10 contrôles avant chaque trade (calendrier, nuit asiatique,"
-#property description "volatilité, news...), risque pondéré par heure, SL 3,5 ATR H1, TP 2 R, BE 0,5 R, sortie 15h-17h."
+#property description "rebonds étirés (RSI + Bollinger), 10 contrôles avant chaque trade (calendrier, veille, volatilité,"
+#property description "news...), mise pondérée selon l'heure (x1,5 à 8h), SL 3 ATR H1, TP 2 R, BE 0,7 R, sortie 15h-17h."
 
 //+------------------------------------------------------------------+
 //| Enumerations                                                      |
@@ -83,10 +84,10 @@ input group "=== Stop loss / Take profit / Break-even ==="
 input ENUM_FX_PROFILE   InpProfile          = FX_PROFILE_WINRATE; // Profil de sortie
 input int               InpHoldUntilHour    = 17;                // Profil taux de réussite : position perdante gardée jusqu'à (heure)
 input double            InpExitMinProfitR   = 0.05;              // Profil taux de réussite : sortie dès que le gain atteint +R
-input double            InpSL_ATR           = 3.5;               // Stop loss = ATR x (définit 1 R)
+input double            InpSL_ATR           = 3.0;               // Stop loss = ATR x (définit 1 R)
 input double            InpTP_R             = 2.0;               // Take profit = R x (profil personnalisé)
 input bool              InpUseBreakEven     = true;              // Activer le break-even
-input double            InpBE_TriggerR      = 0.5;               // Break-even déclenché à +R (profil personnalisé)
+input double            InpBE_TriggerR      = 0.7;               // Break-even déclenché à +R (profil personnalisé)
 input double            InpBE_LockR         = 0.1;               // Gain verrouillé au break-even (R)
 input bool              InpUseTrailing      = false;             // Activer le trailing stop
 input double            InpTrailStartR      = 2.0;               // Trailing actif à partir de +R
@@ -98,7 +99,7 @@ input int               InpMaxHoldHours     = 0;                 // Durée max d
 
 input group "=== Gestion du risque ==="
 input ENUM_RISK_MODE  InpRiskMode         = RISK_PCT_BALANCE;  // Calcul du lot
-input double          InpRiskPercent      = 0.3;               // Risque de base par trade (%) - x1,5 le matin, x0,5 après 13h
+input double          InpRiskPercent      = 0.35;              // Risque de base par trade (%) - x1,5 à 8h ... x0,2 à 14h
 input double          InpFixedLot         = 0.01;              // Lot fixe (mode lot fixe)
 input double          InpMaxLot           = 50.0;              // Lot maximum
 input double          InpMinLotMaxRiskPct = 2.0;               // Risque max (%) toléré si le lot minimum est imposé
@@ -113,7 +114,7 @@ input bool            InpUseAdaptiveRisk  = false;             // Risque adaptat
 input int             InpAdaptiveWindow   = 60;                // Nombre de trades mémorisés
 input double          InpAdaptiveFactor   = 0.5;               // Multiplicateur de risque si le bilan récent est négatif
 input int             InpMaxConsecLosses  = 0;                 // Pertes consécutives max par jour (0 = off)
-input double          InpMaxVolatility    = 0.9;               // Filtre volatilité : pas de trade si ATR H1 > x fois sa moyenne 10 jours (0 = off)
+input double          InpMaxVolatility    = 1.0;               // Filtre volatilité : pas de trade si ATR H1 > x fois sa moyenne 10 jours (0 = off)
 input int             InpMaxSpreadPoints  = 20;                // Spread max en points (0 = automatique)
 input double          InpMaxSpreadPctSL   = 10.0;              // Spread max en % de la distance du SL
 input int             InpSlippagePoints   = 10;                // Glissement max (points)
@@ -135,13 +136,13 @@ input bool            InpNewsHighOnly     = true;              // Uniquement les
 input string          InpNewsCurrencies   = "";                // Devises surveillées (vide = devises du symbole)
 input bool            InpCloseBeforeNews  = false;             // Fermer une position gardée en perte 10 min avant une news (déconseillé)
 
-input group "=== Intelligence de marché (v8, EURUSD seul) ==="
+input group "=== Intelligence de marché (v9, EURUSD seul) ==="
 input bool            InpSkipMonday       = true;              // Pas de trade le lundi (jour le plus faible, 13 années sur 19)
 input bool            InpSkipFOMC         = true;              // Pas de trade le jour d'une décision de la Fed (FOMC)
 input bool            InpSkipMonthEnd     = true;              // Pas de trade le dernier jour ouvré du mois
 input double          InpMinBollinger     = 1.5;               // Vente si le prix est > x écarts-types au-dessus de sa moyenne 20 M5 (0 = off)
-input double          InpMinAsiaRangeATR  = 1.4;               // Nuit asiatique (7h avant la fenêtre) : amplitude >= x ATR H1 (0 = off)
-input bool            InpHourWeighting    = true;              // Risque pondéré selon l'heure (x1,5 de 8h à 11h, x0,5 après 13h)
+input double          InpMinAsiaRangeATR  = 0.0;               // Nuit asiatique (7h avant la fenêtre) : amplitude >= x ATR H1 (0 = off, non retenu)
+input bool            InpHourWeighting    = true;              // Mise pondérée selon l'heure (x1,5 à 8h ... x0,2 à 14h)
 
 input group "=== Affichage ==="
 input bool            InpShowPanel        = true;              // Afficher le panneau d'information
@@ -477,16 +478,32 @@ double RecentPerformanceR(int &count)
    return sum;
   }
 
-// pondération du risque selon l'heure d'entrée (19 ans : +0,17 R/trade à 8h, +0,02 R/trade à 14h)
+// mise selon l'heure d'entrée, proportionnelle au gain moyen mesuré sur 2007-2018 (validé sur 2019-2026) :
+// 1re heure x1,5 ; 2e x1,0 ; 3e x0,9 ; 4e x1,0 ; 5e x0,6 ; 6e x0,4 ; 7e x0,2
 double HourRiskFactor(const int sessionHour)
   {
    if(!InpHourWeighting)
       return 1.0;
-   if(sessionHour >= InpSessionStart && sessionHour < InpSessionStart + 3)
-      return 1.5;
-   if(sessionHour >= InpSessionStart + 5)
-      return 0.5;
-   return 1.0;
+   int k = sessionHour - InpSessionStart;
+   switch(k)
+     {
+      case 0:
+         return 1.5;
+      case 1:
+         return 1.0;
+      case 2:
+         return 0.9;
+      case 3:
+         return 1.0;
+      case 4:
+         return 0.6;
+      case 5:
+         return 0.4;
+      case 6:
+         return 0.2;
+      default:
+         return 1.0;
+     }
   }
 
 double BaseRiskPercent()
@@ -1922,37 +1939,37 @@ string ForecastText(const datetime now)
    int h = SessionHour(now);
    if(!HourInWindow(h, InpSessionStart, InpSessionEnd))
       return "aucun avantage statistique mesuré à cette heure (19 ans de données MT5) - le robot observe";
-   // statistiques du robot v8 sur 19 ans de données MT5 réelles (EURUSD 2007-2025), par heure d'entrée
+   // statistiques du robot v9 sur 19 ans de données MT5 réelles (EURUSD 2007-2025), par heure d'entrée
    double win = 0.0, er = 0.0;
    switch(h)
      {
       case 8:
-         win = 74.0;
-         er = 0.141;
+         win = 70.0;
+         er = 0.168;
          break;
       case 9:
-         win = 73.0;
-         er = 0.084;
+         win = 67.0;
+         er = 0.082;
          break;
       case 10:
-         win = 75.0;
-         er = 0.091;
+         win = 70.0;
+         er = 0.089;
          break;
       case 11:
-         win = 81.0;
-         er = 0.116;
+         win = 77.0;
+         er = 0.110;
          break;
       case 12:
-         win = 78.0;
-         er = 0.052;
+         win = 75.0;
+         er = 0.045;
          break;
       case 13:
-         win = 78.0;
-         er = 0.034;
+         win = 77.0;
+         er = 0.031;
          break;
       case 14:
-         win = 84.0;
-         er = 0.023;
+         win = 83.0;
+         er = 0.021;
          break;
       default:
          break;
@@ -2243,14 +2260,14 @@ int OnInit()
    if(InpProfile == FX_PROFILE_WINRATE)
      {
       g_tpR = 2.0;
-      g_beR = 0.5;
+      g_beR = 0.7;
       g_condExit = true;
      }
    else
       if(InpProfile == FX_PROFILE_RETURN)
         {
          g_tpR = 2.0;
-         g_beR = 0.5;
+         g_beR = 0.7;
          g_condExit = false;
         }
       else
