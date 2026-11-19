@@ -92,6 +92,7 @@ Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 
 | Petit compte : refuser le lot minimum quand il dépasse 1,5 fois la mise prévue | Légèrement moins bon (2 000 $ : +372 % au lieu de +377 %) : ces trades restent rentables. |
 | Moduler la mise selon le jour, l'amplitude de la veille, le RSI ou les positions ouvertes | Les effets s'inversent entre 2007-2018 et 2019-2025 : ce serait du hasard. |
 | Volatilité ≤ 0,9 au lieu de 1,0 | Drawdown 19 ans plus profond (16,4 % au lieu de 13,5 %) pour le même gain. |
+| Deuxième trade l'après-midi (achat après une forte baisse du matin, vente après une forte hausse), 72 variantes | **Aucune** n'est positive sur les 3 périodes : rejeté. |
 | Garder les positions en perte jusqu'au lendemain | 74,3 % de positions gagnantes au lieu de 72,8 %, mais même bénéfice, drawdown un peu plus profond, plus les frais de nuit et le risque d'écart de prix à la réouverture. |
 
 **Les 4 profils v10** (votre période 2019-2025, 50 000 $ au départ, gains composés) :
@@ -125,6 +126,21 @@ Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 
 drawdown 15 %.
 
 Le détail est dans [`results/backtest_results_eurusd.csv`](results/backtest_results_eurusd.csv).
+
+## 2 ter. Votre backtest MT5 de la v10 (50 000 $)
+
+| | v9.1 | **v10** |
+|---|---:|---:|
+| Profit net | +405 443 $ | **+414 137 $** |
+| Drawdown maximal des fonds | 11,5 % | **9,4 %** |
+| Positions gagnantes (MT5) | 74,6 % | **78,5 %** |
+| Ratio de Sharpe | 3,97 | 3,83 |
+
+**Choix du profil chez votre courtier.** Votre rapport indique un « drawdown relatif des fonds » de **16,8 %** en
+profil Équilibré : c'est le pire recul mesuré par rapport au sommet du moment. Le profil Maximum (mise ×1,28)
+dépasserait le coupe-circuit de 20 % et arrêterait le robot. Chez ce courtier :
+- restez en **Équilibré**, ou au plus en **Dynamique** ;
+- n'utilisez le profil Maximum qu'en remontant le paramètre « Drawdown max » à 25 %, en connaissance de cause.
 
 ## 2 bis. Le levier le plus concret : les frais du courtier
 
