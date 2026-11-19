@@ -1,4 +1,4 @@
-# IABot EURUSD v9 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
+# IABot EURUSD v9.1 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
 
 Expert Advisor **entièrement automatique**, qui travaille **uniquement sur EURUSD**. Il ne lit **aucune autre paire** :
 un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout seul :
@@ -17,6 +17,7 @@ un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout s
 - il pose **immédiatement le Stop Loss et le Take Profit**, puis passe au **break-even** ;
 - il **sort en gain chaque fois que c'est possible** : environ **73 % de trades gagnants** ;
 - il ne prend pas de position autour des **annonces économiques** (calendrier MT5 en direct) ;
+- il affiche le **gain du mois en cours et du mois précédent** ;
 - il protège le capital : perte journalière max, coupe-circuit, filtres de spread et de volatilité.
 
 > Fichier à installer : [`MQL5/Experts/IABot/IABot_EURUSD.mq5`](MQL5/Experts/IABot/IABot_EURUSD.mq5)
@@ -62,6 +63,38 @@ jamais vues.
 Le drawdown reste au même niveau, donc la v9 ne prend pas plus de risque : elle gagne plus parce qu'elle mise au bon
 moment. Elle est **1,7 fois plus rentable que la v7 sur 19 ans**, et meilleure que la v7 et la v8 sur chacune des trois
 périodes.
+
+## 1 bis. Recherche v10 : tout ce qui a été essayé pour gagner plus (et pourquoi c'est rejeté)
+
+Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 2007-2018 et jugés sur 2019-2025 et 2026 :
+
+| Idée | Résultat |
+|---|---|
+| Ne plus ajouter de vente si les positions ouvertes perdent | **Moins bon.** Revendre plus haut quand le marché monte reste rentable : le retour à la moyenne finit par jouer. |
+| Plus de positions par jour (15, 20), entrées plus rapprochées | Plus de trades, mais moins de gain à drawdown égal : les positions d'une même journée sont liées. |
+| Vendre plus haut avec un ordre limite (+0,05 à +0,5 ATR) | **Moins bon.** Le robot rate les meilleurs trades, ceux qui repartent tout de suite à la baisse. |
+| Prendre le gain plus tôt (TP 0,5 R à 1 R) | Jusqu'à 80 % de gagnants, mais 2 à 8 fois moins de bénéfice. |
+| Cassure de la nuit asiatique, à l'achat ou à la vente | **Perdant** sur 19 ans (2 à 10 années positives sur 19 seulement). |
+| Suivi de tendance journalier (Donchian 20/10) | **Perdant** depuis 2013 : l'EURUSD revient vers sa moyenne bien plus qu'il ne suit les tendances. |
+| Filtres de régime (tendance journalière, hebdomadaire…) | Aucun ne se comporte de la même façon sur 2007-2018 et sur 2019-2025 : ce serait du hasard. |
+
+**Conclusion honnête.** Sur 19 ans de données EURUSD, la stratégie de la v9 est à la limite de ce que les données
+permettent. Le levier qui reste pour gagner plus chaque mois est la **mise par trade**. La v9.1 la rend simple à
+choisir avec un **profil de risque**. Plus de gain veut toujours dire un drawdown plus profond.
+
+**Les 4 profils** (votre période 2019-2025, 50 000 $ au départ, gains composés) :
+
+| Profil (paramètre « Profil de risque ») | Mise de base | Gain mensuel moyen | Gain total 2019-2025 | Pire mois | Drawdown max |
+|---|---:|---:|---:|---:|---:|
+| Prudent | 0,30 % | +1 606 $ | +134 943 $ | -5 890 $ | 11,8 % |
+| **Équilibré (défaut)** | 0,35 % | **+2 111 $** | **+177 327 $** | -7 794 $ | 13,7 % |
+| Dynamique | 0,40 % | +2 708 $ | +227 450 $ | -10 825 $ | 15,5 % |
+| Maximum | 0,45 % | +3 354 $ | +281 754 $ | -14 565 $ | 17,7 % |
+
+- **Régularité.** Pour tous les profils, environ 7 mois sur 10 sont positifs. Les gains mensuels augmentent avec le
+  temps, car ils sont composés.
+- **Pas de profil plus agressif.** Au-delà de 0,45 %, le drawdown atteint le coupe-circuit de 20 %, ce qui arrête
+  le robot. Il n'y a donc pas de profil au-dessus.
 
 ## 2. Résultats v9 (réglages par défaut : risque de base 0,35 %)
 
@@ -156,6 +189,7 @@ Contrôles avant trade (9/10) : fenêtre OK | calendrier OK | veille 11.0 OK | n
 News : USD US CPI m/m à 2025.03.12 15:30
 Mémoire : 60 trades, bilan 6.9 R  ->  risque normal
 Risque/trade : 0.32% (base 0.35% x0.9 selon l'heure)   |   Trades du jour : 2/10
+Ce mois-ci : 0.00 USD (2 trades)   |   Mois précédent : 160.68 USD
 Résultat du jour : 0.00 USD   |   Drawdown : 0.65% (max 20.0%)
 Position : VENTE 0.11 @ 1.09040  SL 1.09358  TP 1.08403  (0.20 R, 7.04 USD)
 Position : VENTE 0.15 @ 1.09018  SL 1.09352  TP 1.08350  (0.13 R, 6.30 USD)
@@ -210,7 +244,8 @@ pour information, ce n'est plus un filtre)*
 
 | Paramètre | Défaut | Rôle |
 |---|---|---|
-| Risque de base par trade (%) | 0,35 | 0,30 = prudent (drawdown 12 %) ; 0,40 = agressif (drawdown 15,5 %). |
+| Profil de risque | Équilibré (0,35 %) | Prudent 0,30 / Équilibré 0,35 / Dynamique 0,40 / Maximum 0,45 (voir tableau 1 bis). |
+| Risque personnalisé (%) | 0 | Si > 0, remplace le profil. |
 | Mise pondérée selon l'heure | oui | ×1,5 à 8 h … ×0,2 à 14 h. |
 | Positions simultanées / trades par jour | 10 / 10 | |
 | Minutes entre deux entrées | 15 | |
@@ -266,13 +301,13 @@ build/eurusd/emu --data data/m1/EURUSD_MT5c.csv --symbol EURUSD --commission 0
 ## 11. Contenu du dépôt
 
 ```
-MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v9, 100 % EURUSD)
+MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v9.1, 100 % EURUSD)
 MQL5/Experts/IABot/IABot_FX_M5.mq5   ← ancien robot, non maintenu
 MQL5/Experts/IABot/IABot_M5.mq5      ← ancien robot (or), non maintenu
 results/                             ← résultats détaillés
 tools/mql5emu/                       ← émulateur MQL5
 tools/verify/                        ← scénarios de vérification + rapports
-tools/research/                      ← toute la recherche (v9_*.py : étude v9)
+tools/research/                      ← toute la recherche (v9_*.py, v10_*.py : dernières études)
 tools/data/                          ← téléchargement, nettoyage et préparation des données
 ```
 

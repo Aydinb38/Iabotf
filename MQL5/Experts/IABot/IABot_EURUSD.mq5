@@ -26,7 +26,7 @@
 //|  MACD, Bollinger, RSI, pivots, volatilité, calendrier MT5.       |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "9.00"
+#property version     "9.10"
 #property description "Robot autonome 100 % EURUSD (M5) : séance européenne 8h-15h, jusqu'à 10 trades/jour,"
 #property description "rebonds étirés (RSI + Bollinger), 10 contrôles avant chaque trade (calendrier, veille, volatilité,"
 #property description "news...), mise pondérée selon l'heure (x1,5 à 8h), SL 3 ATR H1, TP 2 R, BE 0,7 R, sortie 15h-17h."
@@ -39,6 +39,14 @@ enum ENUM_RISK_MODE
    RISK_PCT_BALANCE = 0, // % du solde
    RISK_PCT_EQUITY  = 1, // % des fonds propres (equity)
    RISK_FIXED_LOT   = 2  // Lot fixe
+  };
+
+enum ENUM_RISK_PROFILE
+  {
+   RISK_PROFILE_PRUDENT  = 0, // Prudent : 0,30 % (drawdown 19 ans ~12 %)
+   RISK_PROFILE_BALANCED = 1, // Équilibré : 0,35 % (drawdown ~14 %)
+   RISK_PROFILE_DYNAMIC  = 2, // Dynamique : 0,40 % (drawdown ~15,5 %)
+   RISK_PROFILE_MAXIMUM  = 3  // Maximum : 0,45 % (drawdown ~17,5 %)
   };
 
 enum ENUM_FX_DIRECTION
@@ -99,7 +107,8 @@ input int               InpMaxHoldHours     = 0;                 // Durée max d
 
 input group "=== Gestion du risque ==="
 input ENUM_RISK_MODE  InpRiskMode         = RISK_PCT_BALANCE;  // Calcul du lot
-input double          InpRiskPercent      = 0.35;              // Risque de base par trade (%) - x1,5 à 8h ... x0,2 à 14h
+input ENUM_RISK_PROFILE InpRiskProfile   = RISK_PROFILE_BALANCED; // Profil de risque (mise de base par trade, x1,5 à 8h ... x0,2 à 14h)
+input double          InpRiskPercent      = 0.0;               // Risque personnalisé (%) : remplace le profil si > 0
 input double          InpFixedLot         = 0.01;              // Lot fixe (mode lot fixe)
 input double          InpMaxLot           = 50.0;              // Lot maximum
 input double          InpMinLotMaxRiskPct = 2.0;               // Risque max (%) toléré si le lot minimum est imposé
@@ -200,6 +209,9 @@ double   g_prevRangeATR    = 0.0;   // amplitude de la veille en ATR H1 (filtre 
 
 string   g_status          = "Initialisation";
 double   g_lastBB          = 0.0;   // dernier écart Bollinger M5 (écarts-types)
+double   g_monthPL         = 0.0;   // gain clôturé du mois en cours
+double   g_prevMonthPL     = 0.0;   // gain clôturé du mois précédent
+int      g_monthTrades     = 0;     // trades ouverts ce mois-ci
 string   g_trendText       = "-";
 double   g_lastRSI         = 0.0;
 uint     g_lastPanelMs     = 0;
@@ -506,9 +518,27 @@ double HourRiskFactor(const int sessionHour)
      }
   }
 
+// mise de base selon le profil (ou le risque personnalisé)
+double ProfileRiskPercent()
+  {
+   if(InpRiskPercent > 0.0)
+      return InpRiskPercent;
+   switch(InpRiskProfile)
+     {
+      case RISK_PROFILE_PRUDENT:
+         return 0.30;
+      case RISK_PROFILE_DYNAMIC:
+         return 0.40;
+      case RISK_PROFILE_MAXIMUM:
+         return 0.45;
+      default:
+         return 0.35;
+     }
+  }
+
 double BaseRiskPercent()
   {
-   return InpRiskPercent * HourRiskFactor(SessionHour(TimeCurrent()));
+   return ProfileRiskPercent() * HourRiskFactor(SessionHour(TimeCurrent()));
   }
 
 double EffectiveRiskPercent()
@@ -651,6 +681,50 @@ void ComputeTodayStats()
             else
                g_consecLosses = 0;
            }
+     }
+  }
+
+// gains clôturés du mois en cours et du mois précédent (positions du robot)
+void ComputeMonthStats()
+  {
+   g_monthPL = 0.0;
+   g_prevMonthPL = 0.0;
+   g_monthTrades = 0;
+   MqlDateTime d;
+   TimeToStruct(TimeCurrent(), d);
+   d.day = 1;
+   d.hour = 0;
+   d.min = 0;
+   d.sec = 0;
+   datetime monthStart = StructToTime(d);
+   d.mon -= 1;
+   if(d.mon < 1)
+     {
+      d.mon = 12;
+      d.year -= 1;
+     }
+   datetime prevStart = StructToTime(d);
+   if(!HistorySelect(prevStart, TimeCurrent() + 86400))
+      return;
+   int total = HistoryDealsTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong deal = HistoryDealGetTicket(i);
+      if(deal == 0)
+         continue;
+      if(HistoryDealGetString(deal, DEAL_SYMBOL) != _Symbol || (ulong)HistoryDealGetInteger(deal, DEAL_MAGIC) != InpMagic)
+         continue;
+      datetime dt = (datetime)HistoryDealGetInteger(deal, DEAL_TIME);
+      double pl = HistoryDealGetDouble(deal, DEAL_PROFIT) + HistoryDealGetDouble(deal, DEAL_COMMISSION)
+                  + HistoryDealGetDouble(deal, DEAL_SWAP) + HistoryDealGetDouble(deal, DEAL_FEE);
+      if(dt >= monthStart)
+        {
+         g_monthPL += pl;
+         if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal, DEAL_ENTRY) == DEAL_ENTRY_IN)
+            g_monthTrades++;
+        }
+      else
+         g_prevMonthPL += pl;
      }
   }
 
@@ -2143,8 +2217,9 @@ void UpdatePanel(const bool force)
    s += "Mémoire : " + IntegerToString(memCount) + " trades, bilan " + DoubleToString(memSum, 1) + " R  ->  risque " +
         (g_riskReduced ? "RÉDUIT (protection)" : "normal") + "\n";
    s += "Risque/trade : " + (InpRiskMode == RISK_FIXED_LOT ? "lot fixe " + DoubleToString(InpFixedLot, 2) : DoubleToString(EffectiveRiskPercent(), 2) + "%" +
-        (InpHourWeighting ? StringFormat(" (base %.2f%% x%.1f selon l'heure)", InpRiskPercent, HourRiskFactor(SessionHour(now))) : ""));
+        (InpHourWeighting ? StringFormat(" (base %.2f%% x%.1f selon l'heure)", ProfileRiskPercent(), HourRiskFactor(SessionHour(now))) : ""));
    s += "   |   Trades du jour : " + IntegerToString(g_tradesToday) + (InpMaxTradesPerDay > 0 ? "/" + IntegerToString(InpMaxTradesPerDay) : "") + "\n";
+   s += "Ce mois-ci : " + FmtMoney(g_monthPL) + StringFormat(" (%d trades)", g_monthTrades) + "   |   Mois précédent : " + FmtMoney(g_prevMonthPL) + "\n";
    s += "Résultat du jour : " + FmtMoney(g_closedPLToday) + "   |   Drawdown : " + DoubleToString(CurrentDrawdownPct(), 2) + "% (max " + DoubleToString(InpMaxDrawdownPct, 1) + "%)\n";
 
    int shown = 0, npos = 0;
@@ -2217,7 +2292,7 @@ bool ValidateInputs()
       Print("IABot: SL/TP invalides");
       ok = false;
      }
-   if(InpRiskMode != RISK_FIXED_LOT && (InpRiskPercent <= 0.0 || InpRiskPercent > 10.0))
+   if(InpRiskMode != RISK_FIXED_LOT && (InpRiskPercent < 0.0 || InpRiskPercent > 10.0))
      {
       Print("IABot: le risque par trade doit être compris entre 0 et 10 %");
       ok = false;
@@ -2317,6 +2392,7 @@ int OnInit()
    g_dayStart = 0;
    UpdateDayAnchor();
    ComputeTodayStats();
+   ComputeMonthStats();
 
    BuildNewsCurrencies();
    RefreshNews();
@@ -2329,7 +2405,7 @@ int OnInit()
       PrintFormat("IABot: info - le graphique est en %s, les signaux sont calculés en %s",
                   TFToString(_Period), TFToString(InpSignalTF));
    PrintFormat("IABot: démarré sur %s | compte %s | remplissage %d | risque %.2f%% | SL %.1f ATR | TP %.1f R | fenêtre %dh-%dh | %d positions max",
-               _Symbol, (g_isHedging ? "hedging" : "netting"), (int)g_filling, InpRiskPercent, InpSL_ATR, g_tpR, InpSessionStart, InpSessionEnd, InpMaxPositions);
+               _Symbol, (g_isHedging ? "hedging" : "netting"), (int)g_filling, ProfileRiskPercent(), InpSL_ATR, g_tpR, InpSessionStart, InpSessionEnd, InpMaxPositions);
    if(TradeBias() == 0)
       PrintFormat("IABot: ATTENTION - robot 100 %% EURUSD : %s n'est pas tradé. Placez le robot sur un graphique EURUSD.", _Symbol);
    if(g_ddHalt)
@@ -2405,6 +2481,7 @@ void OnTick()
 
    // nouvelle bougie : statistiques et nettoyage
    ComputeTodayStats();
+   ComputeMonthStats();
    CleanupTicketVariables();
    RefreshNews();
 
