@@ -27,34 +27,21 @@ PROFILES = {
                max_day=3, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
                extra=["--set", "InpExitHour=13"]),
     # IABot EURUSD v3 : profil « taux de réussite » (sortie en gain, maintien jusqu'à 17 h), filtre d'amplitude, 3 positions espacées d'1 h, risque 0,5 %
-    # EA EURUSD v6 : ventes 8h-15h, 10 positions/jour (15 min d'écart), SL 4 ATR, TP 2 R, BE 0,7 R, sortie 15h-17h, risque 0,2 %
-    "eurusd": dict(title="IABot_EURUSD v6", sym="EURUSD", tp=2.0, trailing=False, win=(8, 15), win_incl_end=False, exit_hour=17,
-                   max_day=10, max_pos=10, min_gap=15, risk=0.2, adaptive=True,
-                   risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(6, 13),
+    # EA EURUSD v7 (100 % EURUSD) : ventes 8h-15h, 10 positions/jour (15 min d'écart), SL 3 ATR, TP 2 R, BE 0,7 R, sortie 15h-17h,
+    # risque de base 0,25 % pondéré selon l'heure (x1,5 de 8h à 11h, x0,5 après 13h)
+    "eurusd": dict(title="IABot_EURUSD v7", sym="EURUSD", tp=2.0, trailing=False, win=(8, 15), win_incl_end=False, exit_hour=17,
+                   max_day=10, max_pos=10, min_gap=15, risk=0.25, risk_max_mult=1.5, adaptive=True, eurusd_only=True,
+                   risk_pairs=[("GBPUSD", []), ("EURJPY", [])], gmt=(6, 13),
                    min_trades=500, min_be=20, extra=["--set", "InpExitHour=13", "--set", "InpHoldUntilHour=15"]),
 }
-P = dict(dict(max_pos=1, min_gap=0, risk=0.5, adaptive=False), **PROFILES[PROFILE_NAME])
+P = dict(dict(max_pos=1, min_gap=0, risk=0.5, adaptive=False, risk_max_mult=1.0, eurusd_only=False), **PROFILES[PROFILE_NAME])
 TMP = os.path.join(BUILD, "scenarios")
 os.makedirs(TMP, exist_ok=True)
 EMU = os.path.join(BUILD, "emu")
 results = []
 
 
-def aux_args(args):
-    """EURUSD : GBPUSD / USDJPY / USDCHF de la même période (force des devises), s'ils existent"""
-    if "--data" not in args or "--symbol" not in args or args[args.index("--symbol") + 1] != "EURUSD":
-        return []
-    data = args[args.index("--data") + 1]; d, f = os.path.split(data); suffix = f[len("EURUSD"):]
-    out = []
-    for sym in ("GBPUSD", "USDJPY", "USDCHF"):
-        pth = os.path.join(d, sym + suffix)
-        if os.path.exists(pth):
-            out += ["--aux", f"{sym}={pth}"]
-    return out
-
-
 def run(name, args, exe=EMU, expect_rc=0):
-    args = args + aux_args(args)
     log = os.path.join(TMP, name + ".log")
     trades = os.path.join(TMP, name + "_trades.csv")
     cmd = [exe] + args + ["--log", log, "--trades", trades]
@@ -137,7 +124,8 @@ def s_baseline(check):
     bal = balance_before(tr)
     riskpct = tr.risk_money / bal * 100
     tgt = P["risk"]
-    check(riskpct.max() <= tgt * 1.12, f"risque par trade <= {tgt} % (+commission) : max {riskpct.max():.3f} %")
+    mx = tgt * P["risk_max_mult"]
+    check(riskpct.max() <= mx * 1.12, f"risque par trade <= {mx:g} % (+commission) : max {riskpct.max():.3f} %")
     check(riskpct.median() >= tgt * 0.45, f"risque médian cohérent avec la cible ({riskpct.median():.3f} %, risque adaptatif inclus)")
     check(not re.search(r"échec|refusé|impossible|introuvable", log), "aucun échec d'ordre dans le journal")
     # break-even : SL = ouverture +/- 0.1 R
@@ -193,8 +181,16 @@ def s_baseline(check):
     return f"{s['trades']} trades, gain {s['win']}%, PF {s['pf']}, DD {s['dd']}%"
 
 
-@scenario(f"2. {' et '.join(p[0] for p in P['risk_pairs'])} (autre paire, conversion de devise du profit) : risque correct, aucun plantage")
+@scenario(f"2. {' et '.join(p[0] for p in P['risk_pairs'])} : " + ("robot 100 % EURUSD, aucun trade sur une autre paire" if P["eurusd_only"]
+          else "autre paire, conversion de devise du profit : risque correct, aucun plantage"))
 def s_fx(check):
+    if P["eurusd_only"]:
+        for sym, extra in P["risk_pairs"]:
+            out, log, tr = run("fx_" + sym, ["--data", os.path.join(DATA, f"{sym}_IS.csv"), "--symbol", sym] + extra + Y2016)
+            s = summary(out)
+            check(len(tr) == 0 and s["requests"] == 0, f"{sym} : aucun ordre envoyé ({len(tr)} trades)")
+            check("robot 100 % EURUSD" in log, f"{sym} : message clair dans le journal")
+        return
     for sym, extra in P["risk_pairs"]:
         out, log, tr = run("fx_" + sym, ["--data", os.path.join(DATA, f"{sym}_IS.csv"), "--symbol", sym] + extra + Y2016)
         check(len(tr) > 30, f"{sym} : trades exécutés ({len(tr)})")
@@ -394,7 +390,7 @@ def s_adaptive(check):
         check(True, "sans objet pour ce robot")
         return
     out, log, tr = run("adaptive", ["--data", os.path.join(DATA, f"{SYM}_ALL.csv") if os.path.exists(os.path.join(DATA, f"{SYM}_ALL.csv")) else XAU,
-                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01", "--set", "InpUseAdaptiveRisk=true", "--set", "InpUseStrength=false"])
+                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01", "--set", "InpUseAdaptiveRisk=true", "--set", "InpHourWeighting=false"])
     reduced = False; ok = bad = 0; n_red = n_norm = 0
     for line in log.splitlines():
         if "risque adaptatif -> RÉDUIT" in line: reduced = True; n_red += 1
