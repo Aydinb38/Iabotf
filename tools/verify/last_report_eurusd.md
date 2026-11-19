@@ -1,4 +1,4 @@
-# Vérification automatique de IABot_EURUSD v9
+# Vérification automatique de IABot_EURUSD v9.1
 **19/19 scénarios réussis**
 
 ## ✅ 1. Référence EURUSD 2014-2017 : SL/TP/BE/trailing/risque/horaires conformes
