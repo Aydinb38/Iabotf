@@ -242,6 +242,9 @@ pour information, ce n'est plus un filtre)*
 > - sortie à **13 h** ;
 > - maintien jusqu'à **15 h**.
 
+- **Profils prêts à l'emploi** : copiez les fichiers de [`MQL5/Presets/`](MQL5/Presets) dans le dossier `MQL5/Presets`
+  de MetaTrader. Dans la fenêtre des paramètres du robot (ou du testeur), cliquez sur **Charger** et choisissez
+  `IABot_EURUSD_Prudent`, `_Equilibre`, `_Dynamique` ou `_Maximum`.
 - **Testeur MT5** : utilisez **EURUSD, M5**, avec « Chaque tick basé sur les ticks réels ».
 - **Capital conseillé : 5 000 $ ou plus.** Le lot minimum est de 0,01. Avec moins, les mises ne peuvent pas suivre
   exactement la pondération horaire ni l'encaissement de 70 %. Sur 2019-2025, le gain passe de +450 % (50 000 $) à
@@ -322,6 +325,7 @@ build/eurusd/emu --data data/m1/EURUSD_MT5c.csv --symbol EURUSD --commission 0
 MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v10, 100 % EURUSD)
 MQL5/Experts/IABot/IABot_FX_M5.mq5   ← ancien robot, non maintenu
 MQL5/Experts/IABot/IABot_M5.mq5      ← ancien robot (or), non maintenu
+MQL5/Presets/IABot_EURUSD_*.set     ← réglages des 4 profils de risque (à charger dans MT5)
 results/                             ← résultats détaillés
 tools/mql5emu/                       ← émulateur MQL5
 tools/verify/                        ← scénarios de vérification + rapports
