@@ -90,6 +90,9 @@ Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 
 | Couper un trade qui perd plus de 0,3 à 0,7 R après 1 à 4 h | Perte moyenne plus petite (-0,6 R au lieu de -0,9 R), mais moins de trades gagnants (59 à 69 %) et moins de bénéfice : ces trades se rattrapent souvent. |
 | Attendre une bougie de confirmation avant de vendre | Même taux de réussite, 30 à 80 % de trades en moins, nettement moins de bénéfice, négatif en 2026. |
 | Petit compte : refuser le lot minimum quand il dépasse 1,5 fois la mise prévue | Légèrement moins bon (2 000 $ : +372 % au lieu de +377 %) : ces trades restent rentables. |
+| Moduler la mise selon le jour, l'amplitude de la veille, le RSI ou les positions ouvertes | Les effets s'inversent entre 2007-2018 et 2019-2025 : ce serait du hasard. |
+| Volatilité ≤ 0,9 au lieu de 1,0 | Drawdown 19 ans plus profond (16,4 % au lieu de 13,5 %) pour le même gain. |
+| Garder les positions en perte jusqu'au lendemain | 74,3 % de positions gagnantes au lieu de 72,8 %, mais même bénéfice, drawdown un peu plus profond, plus les frais de nuit et le risque d'écart de prix à la réouverture. |
 
 **Les 4 profils v10** (votre période 2019-2025, 50 000 $ au départ, gains composés) :
 
@@ -122,6 +125,23 @@ Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 
 drawdown 15 %.
 
 Le détail est dans [`results/backtest_results_eurusd.csv`](results/backtest_results_eurusd.csv).
+
+## 2 bis. Le levier le plus concret : les frais du courtier
+
+Le robot fait environ 650 trades par an, donc chaque dixième de pip compte. Résultats sur votre période (2019-2025,
+50 000 $, profil Équilibré) selon le coût par trade (spread + commission) :
+
+| Coût moyen par trade | Gain 2019-2025 | Profit factor | Drawdown max |
+|---|---:|---:|---:|
+| 0,3 pip (compte ECN très bon marché) | **+427 070 $** | 1,47 | 11,5 % |
+| 0,6 pip (compte ECN courant) | **+335 291 $** | 1,41 | 11,2 % |
+| 1,1 pip (spread réel des données de test) | +224 833 $ | 1,34 | 13,5 % |
+| 1,2 pip | +205 309 $ | 1,32 | 14,0 % |
+| 1,3 pip | +185 697 $ | 1,31 | 14,2 % |
+
+**Choisir un compte ECN / « raw spread » à bas coût peut presque doubler le gain**, sans rien changer au robot.
+Indiquez votre commission aller-retour par lot dans le paramètre « Commission par lot » pour que la taille des
+positions tienne compte des frais.
 
 ## 3. Pourquoi pas plus d'heures ou plus de trades
 
