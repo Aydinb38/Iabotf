@@ -27,9 +27,10 @@ PROFILES = {
                max_day=3, risk_pairs=[("GBPUSD", []), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(8, 11), min_trades=500, min_be=50,
                extra=["--set", "InpExitHour=13"]),
     # IABot EURUSD v3 : profil « taux de réussite » (sortie en gain, maintien jusqu'à 17 h), filtre d'amplitude, 3 positions espacées d'1 h, risque 0,5 %
-    "eurusd": dict(title="IABot_EURUSD v5", sym="EURUSD", tp=3.0, trailing=False, win=(11, 14), win_incl_end=False, exit_hour=17,
-                   max_day=2, max_pos=2, min_gap=60, risk=0.5, adaptive=True,
-                   risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(9, 12),
+    # EA EURUSD v6 : ventes 8h-15h, 10 positions/jour (15 min d'écart), SL 4 ATR, TP 2 R, BE 0,7 R, sortie 15h-17h, risque 0,2 %
+    "eurusd": dict(title="IABot_EURUSD v6", sym="EURUSD", tp=2.0, trailing=False, win=(8, 15), win_incl_end=False, exit_hour=17,
+                   max_day=10, max_pos=10, min_gap=15, risk=0.2, adaptive=True,
+                   risk_pairs=[("GBPUSD", ["--set", "InpDirection=1"]), ("EURJPY", ["--set", "InpDirection=1"])], gmt=(6, 13),
                    min_trades=500, min_be=20, extra=["--set", "InpExitHour=13", "--set", "InpHoldUntilHour=15"]),
 }
 P = dict(dict(max_pos=1, min_gap=0, risk=0.5, adaptive=False), **PROFILES[PROFILE_NAME])
@@ -39,7 +40,21 @@ EMU = os.path.join(BUILD, "emu")
 results = []
 
 
+def aux_args(args):
+    """EURUSD : GBPUSD / USDJPY / USDCHF de la même période (force des devises), s'ils existent"""
+    if "--data" not in args or "--symbol" not in args or args[args.index("--symbol") + 1] != "EURUSD":
+        return []
+    data = args[args.index("--data") + 1]; d, f = os.path.split(data); suffix = f[len("EURUSD"):]
+    out = []
+    for sym in ("GBPUSD", "USDJPY", "USDCHF"):
+        pth = os.path.join(d, sym + suffix)
+        if os.path.exists(pth):
+            out += ["--aux", f"{sym}={pth}"]
+    return out
+
+
 def run(name, args, exe=EMU, expect_rc=0):
+    args = args + aux_args(args)
     log = os.path.join(TMP, name + ".log")
     trades = os.path.join(TMP, name + "_trades.csv")
     cmd = [exe] + args + ["--log", log, "--trades", trades]
@@ -323,14 +338,16 @@ def s_news(check):
         with open(news2, "w") as f:
             for d in days:
                 f.write(f"{d:%Y-%m-%d} 15:30,USD,3,Test hold {d}\n")
-        out3, log3, tr3 = run("live_hold", ["--data", XAU, "--symbol", SYM, "--live", "--news", news2] + Y2016)
+        out3, log3, tr3 = run("live_hold", ["--data", XAU, "--symbol", SYM, "--live", "--news", news2, "--set", "InpCloseBeforeNews=true"] + Y2016)
+        out4, log4, tr4 = run("live_hold_default", ["--data", XAU, "--symbol", SYM, "--live", "--news", news2] + Y2016)
+        check(len(re.findall(r"news imminente", log4)) == 0, "par défaut, une position gardée n'est pas fermée avant une news (option désactivée)")
         late = 0
         for d in days:
             x = tr3[(tr3.open_time.dt.date == d) & (tr3.close_time > pd.Timestamp(f"{d} 15:20")) & (tr3.close_time < pd.Timestamp(f"{d} 16:00"))]
             late += int(((x.close_time > pd.Timestamp(f"{d} 15:30"))).sum())
         n_close = len(re.findall(r"news imminente", log3))
         check(len(days) > 3 and n_close > 0 and late == 0,
-              f"position gardée en perte fermée avant la news de 15 h 30 ({n_close} fermeture(s) sur {len(days)} jours testés, {late} après la news)")
+              f"option activée : position gardée en perte fermée avant la news de 15 h 30 ({n_close} fermeture(s) sur {len(days)} jours testés, {late} après la news)")
 
 
 @scenario("15. Session en heure GMT (testeur, décalage auto été/hiver US)")
@@ -377,7 +394,7 @@ def s_adaptive(check):
         check(True, "sans objet pour ce robot")
         return
     out, log, tr = run("adaptive", ["--data", os.path.join(DATA, f"{SYM}_ALL.csv") if os.path.exists(os.path.join(DATA, f"{SYM}_ALL.csv")) else XAU,
-                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01", "--set", "InpUseAdaptiveRisk=true"])
+                                    "--symbol", SYM, "--from", "2010-01-01", "--to", "2014-01-01", "--set", "InpUseAdaptiveRisk=true", "--set", "InpUseStrength=false"])
     reduced = False; ok = bad = 0; n_red = n_norm = 0
     for line in log.splitlines():
         if "risque adaptatif -> RÉDUIT" in line: reduced = True; n_red += 1
@@ -398,6 +415,8 @@ def s_sanitize(check):
             continue
         sym = f.split("_")[0]
         if sym not in ("XAUUSD", "EURUSD", "GBPUSD", "AUDUSD", "USDCAD", "USDJPY", "USDCHF", "NZDUSD", "EURJPY", "EURCAD", "EURGBP", "EURCHF", "GBPJPY"):
+            continue
+        if "_MT5" in f and f != "EURUSD_MT5c.csv":   # séries MT5 auxiliaires / brutes : EURUSD nettoyé suffit (19 ans)
             continue
         out, log, tr = run("san_" + f[:-4], ["--data", os.path.join(DATA, f), "--symbol", sym], exe=os.path.join(BUILD, "emu_san"))
         check("ERROR" not in out and "runtime error" not in out, f"{f} : aucune erreur mémoire / UB / division par zéro ({len(tr)} trades)")

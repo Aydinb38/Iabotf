@@ -118,6 +118,48 @@ int PeriodSeconds(ENUM_TIMEFRAMES tf) {
 static void check_symbol(const string& s) {
   if (s.s != E.cfg.symbol) emu_fatal("symbol '" + s.s + "' is not available in the emulator");
 }
+bool SymbolSelect(const string& sym, bool) { return sym.s == E.cfg.symbol || E.find_aux(sym.s) != nullptr; }
+// number of extra-symbol M1 bars already closed at the current emulated time
+static size_t aux_visible(const EmuAux& a) {
+  datetime now = E.tick.time;
+  size_t lo = 0, hi = a.m1.size();
+  while (lo < hi) { size_t mid = (lo + hi) / 2; if (a.m1[mid].t + 60 <= now) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+static std::vector<EmuBar>& aux_tf(EmuAux& a, int tf) {
+  if (tf == PERIOD_CURRENT) tf = _Period;
+  auto it = a.tf.find(tf);
+  if (it != a.tf.end()) return it->second;
+  long sec = PeriodSeconds((ENUM_TIMEFRAMES)tf);
+  std::vector<EmuBar> bars; std::vector<size_t> first;
+  for (size_t i = 0; i < a.m1.size(); i++) {
+    const EmuBar& b = a.m1[i];
+    datetime st = (sec == 604800) ? ((b.t + 4 * 86400) / 604800) * 604800 - 4 * 86400 : b.t - b.t % sec;
+    if (bars.empty() || bars.back().t != st) { bars.push_back(EmuBar{st, b.o, b.h, b.l, b.c, b.tv}); first.push_back(i); }
+    else { auto& x = bars.back(); x.h = std::max(x.h, b.h); x.l = std::min(x.l, b.l); x.c = b.c; x.tv += b.tv; }
+  }
+  a.first_m1[tf] = first;
+  return a.tf[tf] = bars;
+}
+// visible bars of an extra symbol: count, and the bar `shift` (the newest one is built from closed M1 bars only)
+static long aux_count(EmuAux& a, int tf) {
+  size_t k = aux_visible(a); if (k == 0) return 0;
+  auto& bars = aux_tf(a, tf); datetime lt = a.m1[k - 1].t;
+  size_t lo = 0, hi = bars.size();
+  while (lo < hi) { size_t mid = (lo + hi) / 2; if (bars[mid].t <= lt) lo = mid + 1; else hi = mid; }
+  return (long)lo;
+}
+static const EmuBar* aux_bar(EmuAux& a, int tf, int shift) {
+  static EmuBar tmp;
+  long n = aux_count(a, tf);
+  if (shift < 0 || shift >= n) return nullptr;
+  auto& bars = aux_tf(a, tf); size_t j = (size_t)(n - 1 - shift);
+  if (shift > 0) return &bars[j];
+  size_t k = aux_visible(a); size_t f = a.first_m1[tf == PERIOD_CURRENT ? (int)_Period : tf][j];
+  tmp = EmuBar{bars[j].t, a.m1[f].o, a.m1[f].h, a.m1[f].l, a.m1[f].c, 0};
+  for (size_t i = f; i < k; i++) { tmp.h = std::max(tmp.h, a.m1[i].h); tmp.l = std::min(tmp.l, a.m1[i].l); tmp.c = a.m1[i].c; tmp.tv += a.m1[i].tv; }
+  return &tmp;
+}
 double SymbolInfoDouble(const string& sym, ENUM_SYMBOL_INFO_DOUBLE p) {
   check_symbol(sym);
   double conv = E.price_conv(E.tick.bid > 0 ? E.tick.bid : 1.0);
@@ -237,8 +279,12 @@ void Emu::on_tick_price(datetime t, double bid, bool bar_open) {
   }
 }
 static EmuSeries& S(const string& sym, ENUM_TIMEFRAMES tf) { check_symbol(sym); return E.ser(tf); }
-int Bars(const string& sym, ENUM_TIMEFRAMES tf) { return (int)S(sym, tf).bars.size(); }
+int Bars(const string& sym, ENUM_TIMEFRAMES tf) {
+  if (EmuAux* a = E.find_aux(sym.s)) return (int)aux_count(*a, tf);
+  return (int)S(sym, tf).bars.size();
+}
 static const EmuBar* bar_at(const string& sym, ENUM_TIMEFRAMES tf, int shift) {
+  if (EmuAux* a = E.find_aux(sym.s)) return aux_bar(*a, tf, shift);
   auto& s = S(sym, tf); long n = (long)s.bars.size();
   if (shift < 0 || shift >= n) return nullptr;
   return &s.bars[(size_t)(n - 1 - shift)];
@@ -248,6 +294,14 @@ double iOpen(const string& sym, ENUM_TIMEFRAMES tf, int shift) { auto b = bar_at
 double iHigh(const string& sym, ENUM_TIMEFRAMES tf, int shift) { auto b = bar_at(sym, tf, shift); return b ? b->h : 0; }
 double iLow(const string& sym, ENUM_TIMEFRAMES tf, int shift) { auto b = bar_at(sym, tf, shift); return b ? b->l : 0; }
 double iClose(const string& sym, ENUM_TIMEFRAMES tf, int shift) { auto b = bar_at(sym, tf, shift); return b ? b->c : 0; }
+int iBarShift(const string& sym, ENUM_TIMEFRAMES tf, datetime time, bool exact) {
+  long n = Bars(sym, tf); if (n <= 0) return -1;
+  long lo = 0, hi = n;  // first shift whose bar starts at or before `time` (shift 0 = newest)
+  while (lo < hi) { long mid = (lo + hi) / 2; const EmuBar* b = bar_at(sym, tf, (int)mid); if (b && b->t > time) lo = mid + 1; else hi = mid; }
+  if (lo >= n) return -1;
+  if (exact && bar_at(sym, tf, (int)lo)->t != time) return -1;
+  return (int)lo;
+}
 int CopyRates(const string& sym, ENUM_TIMEFRAMES tf, int start, int count, MqlArray<MqlRates>& out) {
   auto& s = S(sym, tf); long n = (long)s.bars.size();
   if (start < 0 || count <= 0 || start >= n) { E.last_error = 4401; return -1; }

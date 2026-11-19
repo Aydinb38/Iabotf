@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Converts MT5 EURUSD M1 parquet files (columns time_server, open, high, low, close, spread) into data/m1/EURUSD_MT5.csv
+"""Converts MT5 M1 parquet files (EURUSD, EURJPY, GBPJPY, CHFJPY) (columns time_server, open, high, low, close, spread) into data/m1/EURUSD_MT5.csv
 (time = broker server time, + real spread in points). usage: convert_mt5.py <parquet_dir> <out.csv>   (needs pyarrow)"""
 import sys, glob, os, pandas as pd, numpy as np
 src, out = sys.argv[1], sys.argv[2]

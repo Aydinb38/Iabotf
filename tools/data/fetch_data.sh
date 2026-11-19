@@ -19,7 +19,7 @@ done
 for y in 2005 2006 2007 2008 2009 2010 2011 2012 2013; do paths="$paths eurusd/DAT_ASCII_EURUSD_M1_${y}.zip"; done
 (cd "$RAW/fxm1" && git checkout HEAD -- $paths)
 # 2) échantillons M1 récents (getdata.finance, 2026-03 -> 2026-09)
-for p in eurusd gbpusd usdjpy audusd usdcad; do
+for p in eurusd gbpusd usdjpy usdchf audusd usdcad; do
   curl -sSfL -o "$RAW/2026/${p^^}_1m.csv" "https://raw.githubusercontent.com/getdata-finance/${p}-1m-ohlcv-forex-historical-data/main/${p^^}_1m.csv"
 done
 curl -sSfL -o "$RAW/2026/XAUUSD_1m.csv" "https://raw.githubusercontent.com/getdata-finance/xauusd-1m-ohlcv-metals-historical-data/main/XAUUSD_1m.csv"
@@ -32,3 +32,9 @@ fi
 (cd "$RAW/mt5" && git checkout HEAD -- $(for y in $(seq 2007 2025); do echo data/cache/EURUSD_M1/$y.parquet; done))
 python3 -m pip install -q pyarrow >/dev/null 2>&1 || true
 python3 -I "$ROOT/tools/data/convert_mt5.py" "$RAW/mt5/data/cache/EURUSD_M1" "$OUT/EURUSD_MT5.csv"
+# 4) v6 : croisements MT5 (force des devises), calendrier économique ForexFactory 2007-2025, nettoyage des artefacts du flux
+(cd "$RAW/mt5" && git checkout HEAD -- forex_factory_cache.csv $(for p in EURJPY GBPJPY CHFJPY; do for y in $(seq 2007 2025); do echo data/cache/${p}_M1/$y.parquet; done; done))
+for p in EURJPY GBPJPY CHFJPY; do python3 -I "$ROOT/tools/data/convert_mt5.py" "$RAW/mt5/data/cache/${p}_M1" "$OUT/${p}_MT5.csv"; done
+for p in EURUSD EURJPY GBPJPY CHFJPY; do python3 -I "$ROOT/tools/data/clean_m1.py" "$OUT/${p}_MT5.csv" "$OUT/${p}_MT5c.csv"; done
+python3 -I "$ROOT/tools/data/build_majors.py" "$OUT"
+python3 -I "$ROOT/tools/data/convert_calendar.py" "$RAW/mt5/forex_factory_cache.csv" "$ROOT/data/calendar.csv"

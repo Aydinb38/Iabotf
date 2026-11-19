@@ -249,6 +249,12 @@ struct EmuDeal {
   double volume, price, profit, commission, swap, fee, sl, tp; int reason; string comment;
 };
 struct EmuNews { datetime t; string currency; int importance; string name; };
+// read-only extra symbol (multi-currency analysis): M1 history, served without look-ahead
+struct EmuAux {
+  std::string sym; int digits = 5; std::vector<EmuBar> m1;
+  std::map<int, std::vector<EmuBar>> tf;          // resampled bars (complete history)
+  std::map<int, std::vector<size_t>> first_m1;    // index of the first M1 bar of each resampled bar
+};
 struct EmuTradeRec {  // closed round trip (per position) for reports
   ulong ticket; int type; datetime open_time, close_time; double volume, open, close, initSL, tp, profit, riskMoney; string exit_reason;
 };
@@ -281,6 +287,8 @@ struct Emu {
   std::string last_comment; std::FILE* log = stdout;
   std::mt19937 rng{12345};
   std::vector<EmuNews> news;
+  std::vector<EmuAux> aux;
+  EmuAux* find_aux(const std::string& s) { for (auto& a : aux) if (a.sym == s) return &a; return nullptr; }
   datetime last_day = 0;
   // statistics
   double peak_equity = 0, max_dd = 0, max_dd_rel = 0, peak_balance = 0, max_bdd = 0, max_bdd_rel = 0;
@@ -484,6 +492,8 @@ double iOpen(const string& sym, ENUM_TIMEFRAMES tf, int shift);
 double iHigh(const string& sym, ENUM_TIMEFRAMES tf, int shift);
 double iLow(const string& sym, ENUM_TIMEFRAMES tf, int shift);
 double iClose(const string& sym, ENUM_TIMEFRAMES tf, int shift);
+int iBarShift(const string& sym, ENUM_TIMEFRAMES tf, datetime time, bool exact = false);
+bool SymbolSelect(const string& sym, bool select);
 int CopyRates(const string& sym, ENUM_TIMEFRAMES tf, int start, int count, MqlArray<MqlRates>& out);
 int iMA(const string& sym, ENUM_TIMEFRAMES tf, int period, int shift, ENUM_MA_METHOD method, ENUM_APPLIED_PRICE price);
 int iRSI(const string& sym, ENUM_TIMEFRAMES tf, int period, ENUM_APPLIED_PRICE price);

@@ -66,6 +66,14 @@ int main(int argc, char** argv) {
     else if (a == "--live") E.cfg.tester = false;
     else if (a == "--visual") E.cfg.visual = true;
     else if (a == "--news") E.cfg.news_file = next();
+    else if (a == "--aux") {  // SYMBOL=path.csv : extra symbol readable by the EA (iClose, iTime, iBarShift...)
+      std::string kv = next(); auto p = kv.find('='); EmuAux ax; ax.sym = kv.substr(0, p);
+      ax.digits = ax.sym.find("JPY") != std::string::npos ? 3 : 5;
+      FILE* f = fopen(kv.substr(p + 1).c_str(), "r"); if (!f) { fprintf(stderr, "cannot open %s\n", kv.c_str()); return 2; }
+      char line[256]; if (!fgets(line, sizeof line, f)) return 2;
+      while (fgets(line, sizeof line, f)) { long t; EmuBar b{}; if (sscanf(line, "%ld,%lf,%lf,%lf,%lf", &t, &b.o, &b.h, &b.l, &b.c) == 5) { b.t = t; b.tv = 1; ax.m1.push_back(b); } }
+      fclose(f); E.aux.push_back(ax);
+    }
     else if (a == "--warmup-days") E.cfg.warmup_days = std::stol(next());
     else if (a == "--trades") trades_out = next();
     else if (a == "--stop-at") stop_s = next();

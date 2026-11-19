@@ -3,30 +3,30 @@
 //|          Robot de trading autonome spécialisé EURUSD (M5)        |
 //|                                                                  |
 //|  Ce que le robot a appris (19 ans de données MT5 réelles,       |
-//|  EURUSD 2007-2025, heure serveur exacte et spread réel) :         |
+//|  EURUSD 2007-2025 + EURJPY/GBPJPY/CHFJPY, heure serveur exacte, |
+//|  spread réel, calendrier économique ForexFactory 2007-2025) :    |
 //|   - l'euro tend à baisser face au dollar pendant la séance       |
-//|     européenne (effet documenté : Ranaldo 2009, Breedon &        |
-//|     Ranaldo 2013) ;                                              |
-//|   - meilleures entrées : rebonds courts M5 (RSI(3) > 65) entre   |
-//|     11h et 14h (heure serveur GMT+2/+3), les jours où la veille  |
-//|     a bougé d'au moins 6 x l'ATR horaire et où la volatilité     |
-//|     horaire reste <= 1,1 x sa moyenne sur 10 jours ;             |
-//|   - 2 positions max par jour : les positions d'une même séance   |
-//|     sont corrélées, en ouvrir plus double le drawdown.           |
+//|     européenne (Ranaldo 2009, Breedon & Ranaldo 2013) : ventes   |
+//|     sur rebond court M5 (RSI(3) > 65) de 8h à 15h (heure serveur |
+//|     GMT+2/+3), jusqu'à 10 positions par jour ;                   |
+//|   - jours écartés : amplitude de la veille < 6 x ATR horaire,    |
+//|     volatilité > 1,1 x sa moyenne, lundi, jour de décision de    |
+//|     la Fed (FOMC), dernier jour du mois ;                        |
+//|   - force des devises (EUR, USD, GBP, JPY, CHF, calculée en      |
+//|     direct sur GBPUSD, USDJPY et USDCHF) : pas de vente quand    |
+//|     l'euro a déjà nettement baissé dans la journée.              |
 //|                                                                  |
-//|  Gestion : SL = 3 x ATR(14) H1, TP = 3 R, break-even à +1 R.     |
-//|  Sortie à 15h ; profil "taux de réussite" (défaut) : une         |
-//|  position perdante à 15h est gardée et fermée dès qu'elle        |
-//|  repasse en gain, au plus tard à 17h (fermée 10 min avant une    |
-//|  annonce importante).                                            |
-//|  Temps réel : analyse des tendances M5/H1/H4/D1, volatilité,     |
-//|  séance, calendrier économique MT5, prévision statistique.       |
+//|  Gestion : SL = 4 x ATR(14) H1, TP = 2 R, break-even à +0,7 R.   |
+//|  Sortie à 15h si la position est en gain, sinon elle est gardée  |
+//|  et fermée dès qu'elle repasse en gain, au plus tard à 17h.      |
+//|  Temps réel : tendances M5/H1/H4/D1, force des devises, ADX,     |
+//|  MACD, Bollinger, pivots, volatilité, calendrier économique MT5. |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "5.00"
-#property description "Robot autonome spécialisé EURUSD (M5) : séance européenne 11h-14h, 2 trades/jour max,"
-#property description "filtres d'amplitude et de volatilité, SL 3 ATR H1, TP 3 R, break-even, sortie 15h-17h,"
-#property description "limites journalières, coupe-circuit, filtres spread / news / volatilité."
+#property version     "6.00"
+#property description "Robot autonome spécialisé EURUSD (M5) : séance européenne 8h-15h, jusqu'à 10 trades/jour,"
+#property description "force des devises, filtres calendrier (lundi, Fed, fin de mois), amplitude et volatilité,"
+#property description "SL 4 ATR H1, TP 2 R, break-even 0,7 R, sortie 15h-17h, limites et coupe-circuit."
 
 //+------------------------------------------------------------------+
 //| Enumerations                                                      |
@@ -74,17 +74,17 @@ input double            InpMinPrevRangeATR  = 6.0;               // Filtre : amp
 input ENUM_TIMEFRAMES   InpATRTF            = PERIOD_H1;         // Unité de temps de l'ATR (stop loss)
 input int               InpATRPeriod        = 14;                // Période ATR
 input int               InpExitHour         = 15;                // Heure de sortie forcée (référence horaire de la session)
-input int               InpMaxPositions     = 2;                 // Positions simultanées max
-input int               InpMinMinutesBetween = 60;               // Minutes minimum entre deux entrées
+input int               InpMaxPositions     = 10;                // Positions simultanées max
+input int               InpMinMinutesBetween = 15;               // Minutes minimum entre deux entrées
 
 input group "=== Stop loss / Take profit / Break-even ==="
 input ENUM_FX_PROFILE   InpProfile          = FX_PROFILE_WINRATE; // Profil de sortie
 input int               InpHoldUntilHour    = 17;                // Profil taux de réussite : position perdante gardée jusqu'à (heure)
 input double            InpExitMinProfitR   = 0.05;              // Profil taux de réussite : sortie dès que le gain atteint +R
-input double            InpSL_ATR           = 3.0;               // Stop loss = ATR x (définit 1 R)
-input double            InpTP_R             = 3.0;               // Take profit = R x (profil personnalisé)
+input double            InpSL_ATR           = 4.0;               // Stop loss = ATR x (définit 1 R)
+input double            InpTP_R             = 2.0;               // Take profit = R x (profil personnalisé)
 input bool              InpUseBreakEven     = true;              // Activer le break-even
-input double            InpBE_TriggerR      = 0.5;               // Break-even déclenché à +R (profil personnalisé)
+input double            InpBE_TriggerR      = 0.7;               // Break-even déclenché à +R (profil personnalisé)
 input double            InpBE_LockR         = 0.1;               // Gain verrouillé au break-even (R)
 input bool              InpUseTrailing      = false;             // Activer le trailing stop
 input double            InpTrailStartR      = 2.0;               // Trailing actif à partir de +R
@@ -96,7 +96,7 @@ input int               InpMaxHoldHours     = 0;                 // Durée max d
 
 input group "=== Gestion du risque ==="
 input ENUM_RISK_MODE  InpRiskMode         = RISK_PCT_BALANCE;  // Calcul du lot
-input double          InpRiskPercent      = 0.5;               // Risque par trade (%)
+input double          InpRiskPercent      = 0.2;               // Risque par trade (%) - jusqu'à 10 positions par jour
 input double          InpFixedLot         = 0.01;              // Lot fixe (mode lot fixe)
 input double          InpMaxLot           = 50.0;              // Lot maximum
 input double          InpMinLotMaxRiskPct = 2.0;               // Risque max (%) toléré si le lot minimum est imposé
@@ -106,20 +106,20 @@ input bool            InpCloseOnDailyLoss = false;             // Fermer les pos
 input double          InpMaxDrawdownPct   = 20.0;              // Drawdown max depuis le sommet en % (0 = off)
 input bool            InpCloseOnMaxDD     = true;              // Fermer les positions si le drawdown max est atteint
 input bool            InpResetProtection  = false;             // Réarmer le robot après un arrêt drawdown
-input int             InpMaxTradesPerDay  = 2;                 // Trades max par jour (0 = illimité)
+input int             InpMaxTradesPerDay  = 10;                // Trades max par jour (0 = illimité)
 input bool            InpUseAdaptiveRisk  = false;             // Risque adaptatif (mémoire des derniers trades)
 input int             InpAdaptiveWindow   = 60;                // Nombre de trades mémorisés
 input double          InpAdaptiveFactor   = 0.5;               // Multiplicateur de risque si le bilan récent est négatif
-input int             InpMaxConsecLosses  = 3;                 // Pertes consécutives max par jour (0 = off)
+input int             InpMaxConsecLosses  = 0;                 // Pertes consécutives max par jour (0 = off)
 input double          InpMaxVolatility    = 1.1;               // Filtre volatilité : pas de trade si ATR H1 > x fois sa moyenne 10 jours (0 = off)
 input int             InpMaxSpreadPoints  = 20;                // Spread max en points (0 = automatique)
-input double          InpMaxSpreadPctSL   = 10.0;              // Spread max en % de la distance du SL
+input double          InpMaxSpreadPctSL   = 7.5;               // Spread max en % de la distance du SL
 input int             InpSlippagePoints   = 10;                // Glissement max (points)
 
 input group "=== Horaires ==="
 input ENUM_TIME_BASE  InpTimeBase         = TIME_BASE_SERVER;  // Référence horaire de la session
-input int             InpSessionStart     = 11;                // Début de la fenêtre d'entrée (heure)
-input int             InpSessionEnd       = 14;                // Fin de la fenêtre d'entrée (heure, exclue)
+input int             InpSessionStart     = 8;                 // Début de la fenêtre d'entrée (heure)
+input int             InpSessionEnd       = 15;                // Fin de la fenêtre d'entrée (heure, exclue)
 input int             InpFridayLastEntry  = 18;                // Vendredi : pas de nouveau trade à partir de (heure serveur, -1 = off)
 input int             InpFridayCloseHour  = 22;                // Vendredi : fermeture des positions (heure serveur, -1 = off)
 input int             InpTesterGMTOffset  = 2;                 // Testeur : décalage GMT du serveur (hiver)
@@ -131,6 +131,14 @@ input int             InpNewsBeforeMin    = 30;                // Pause avant un
 input int             InpNewsAfterMin     = 30;                // Pause après une news (minutes)
 input bool            InpNewsHighOnly     = true;              // Uniquement les news à fort impact
 input string          InpNewsCurrencies   = "";                // Devises surveillées (vide = devises du symbole)
+input bool            InpCloseBeforeNews  = false;             // Fermer une position gardée en perte 10 min avant une news (déconseillé)
+
+input group "=== Intelligence de marché (v6) ==="
+input bool            InpSkipMonday       = true;              // Pas de trade le lundi (jour le plus faible, 13 années sur 19)
+input bool            InpSkipFOMC         = true;              // Pas de trade le jour d'une décision de la Fed (FOMC)
+input bool            InpSkipMonthEnd     = true;              // Pas de trade le dernier jour ouvré du mois
+input bool            InpUseStrength      = true;              // Filtre de force des devises (GBPUSD, USDJPY, USDCHF)
+input double          InpMinEURStrength   = -0.5;              // Pas de vente si la force de l'euro du jour < x ATR
 
 input group "=== Affichage ==="
 input bool            InpShowPanel        = true;              // Afficher le panneau d'information
@@ -145,6 +153,16 @@ int      g_hEmaM5          = INVALID_HANDLE;   // analyse de marché (EMA 50)
 int      g_hEmaH1          = INVALID_HANDLE;
 int      g_hEmaH4          = INVALID_HANDLE;
 int      g_hEmaD1          = INVALID_HANDLE;
+int      g_hADX            = INVALID_HANDLE;   // analyse : force de tendance H1
+int      g_hRSI14          = INVALID_HANDLE;   // analyse : RSI(14) M5
+int      g_hEma12H1        = INVALID_HANDLE;   // analyse : MACD H1 (EMA 12 - EMA 26)
+int      g_hEma26H1        = INVALID_HANDLE;
+
+string   g_symGU           = "";    // symboles utilisés pour la force des devises
+string   g_symUJ           = "";
+string   g_symUC           = "";
+bool     g_strengthOK      = false;
+datetime g_fomcDays[];               // jours de décision de la Fed (heure serveur, début de journée)
 
 bool     g_isTester        = false;
 bool     g_isHedging       = true;
@@ -459,10 +477,18 @@ double RecentPerformanceR(int &count)
    return sum;
   }
 
+// sur EURUSD sans les données de force des devises, le filtre principal manque : risque divisé par deux
+double BaseRiskPercent()
+  {
+   if(InpUseStrength && !g_strengthOK && StringFind(_Symbol, "EURUSD") >= 0)
+      return InpRiskPercent * 0.5;
+   return InpRiskPercent;
+  }
+
 double EffectiveRiskPercent()
   {
    if(!InpUseAdaptiveRisk)
-      return InpRiskPercent;
+      return BaseRiskPercent();
    int count = 0;
    double sum = RecentPerformanceR(count);
    bool reduce = (count >= InpAdaptiveWindow && sum < 0.0);
@@ -472,7 +498,7 @@ double EffectiveRiskPercent()
       PrintFormat("IABot: risque adaptatif -> %s (bilan des %d derniers trades : %+.1f R)",
                   reduce ? "RÉDUIT" : "normal", count, sum);
      }
-   return reduce ? InpRiskPercent * InpAdaptiveFactor : InpRiskPercent;
+   return reduce ? BaseRiskPercent() * InpAdaptiveFactor : BaseRiskPercent();
   }
 
 // résultat net (devise du compte) d'une position clôturée, d'après l'historique
@@ -1166,8 +1192,9 @@ void ManagePositions()
          ClosePosition(ticket, vol, "fermeture du vendredi");
          continue;
         }
-      // position gardée en perte après l'heure de sortie : on ne la laisse pas traverser une news importante
-      if(g_condExit && InpExitHour >= 0 && SessionHour(now) >= InpExitHour && SessionHour(openTime) < InpExitHour)
+      // option : ne pas laisser une position gardée en perte traverser une news importante (désactivé par défaut :
+      // sur 2007-2025, cette fermeture faisait perdre 0,1 R par trade en moyenne)
+      if(InpCloseBeforeNews && g_condExit && InpExitHour >= 0 && SessionHour(now) >= InpExitHour && SessionHour(openTime) < InpExitHour)
         {
          string newsInfo = "";
          if(NewsWithin(now, 10, newsInfo))
@@ -1554,6 +1581,214 @@ bool CanOpenNewTrade(const datetime entryBarTime, string &why)
   }
 
 //+------------------------------------------------------------------+
+//| Intelligence de marché : calendrier et force des devises          |
+//+------------------------------------------------------------------+
+// décisions de la Fed (FOMC), heure serveur : 2007-2026 (calendrier officiel publié à l'avance)
+string FomcDates()
+  {
+   string d = "";
+   d += "2007.01.31 2007.03.21 2007.05.09 2007.06.28 2007.08.07 2007.09.18 2007.10.31 2007.12.11 ";
+   d += "2008.01.22 2008.01.30 2008.03.18 2008.04.30 2008.06.25 2008.08.05 2008.09.16 2008.10.08 2008.10.29 2008.12.16 ";
+   d += "2009.01.28 2009.03.18 2009.04.29 2009.06.24 2009.08.12 2009.09.23 2009.11.04 2009.12.16 ";
+   d += "2010.01.27 2010.03.16 2010.04.28 2010.06.23 2010.08.10 2010.09.21 2010.11.03 2010.12.14 ";
+   d += "2011.01.26 2011.03.15 2011.04.27 2011.06.22 2011.08.09 2011.09.21 2011.11.02 2011.12.13 ";
+   d += "2012.01.25 2012.03.13 2012.04.25 2012.06.20 2012.08.01 2012.09.13 2012.10.24 2012.12.12 ";
+   d += "2013.01.30 2013.03.20 2013.05.01 2013.06.19 2013.07.31 2013.09.18 2013.10.30 2013.12.18 ";
+   d += "2014.01.29 2014.03.19 2014.04.30 2014.06.18 2014.07.30 2014.09.17 2014.10.29 2014.12.17 ";
+   d += "2015.01.28 2015.03.18 2015.04.29 2015.06.17 2015.07.29 2015.09.17 2015.10.28 2015.12.16 ";
+   d += "2016.01.27 2016.03.16 2016.04.27 2016.06.15 2016.07.27 2016.09.21 2016.11.02 2016.12.14 ";
+   d += "2017.02.01 2017.03.15 2017.05.03 2017.06.14 2017.07.26 2017.09.20 2017.11.01 2017.12.13 ";
+   d += "2018.01.31 2018.03.21 2018.05.02 2018.06.13 2018.08.01 2018.09.26 2018.11.08 2018.12.19 ";
+   d += "2019.01.30 2019.03.20 2019.05.01 2019.06.19 2019.07.31 2019.09.18 2019.10.30 2019.12.11 ";
+   d += "2020.01.29 2020.03.03 2020.03.16 2020.04.29 2020.06.10 2020.07.29 2020.09.16 2020.11.05 2020.12.16 ";
+   d += "2021.01.27 2021.03.17 2021.04.28 2021.06.16 2021.07.28 2021.09.22 2021.11.03 2021.12.15 ";
+   d += "2022.01.26 2022.03.16 2022.05.04 2022.06.15 2022.07.27 2022.09.21 2022.11.02 2022.12.14 ";
+   d += "2023.02.01 2023.03.22 2023.05.03 2023.06.14 2023.07.26 2023.09.20 2023.11.01 2023.12.13 ";
+   d += "2024.01.31 2024.03.20 2024.05.01 2024.06.12 2024.07.31 2024.09.18 2024.11.07 2024.12.18 ";
+   d += "2025.01.29 2025.03.19 2025.05.07 2025.06.18 2025.07.30 2025.09.17 2025.10.29 2025.12.10 ";
+   d += "2026.01.28 2026.03.18 2026.04.29 2026.06.17 2026.07.29 2026.09.16 2026.10.28 2026.12.09";
+   return d;
+  }
+
+void LoadFOMCDates()
+  {
+   string parts[];
+   int n = StringSplit(FomcDates(), ' ', parts);
+   ArrayResize(g_fomcDays, 0);
+   for(int i = 0; i < n; i++)
+     {
+      if(StringLen(parts[i]) != 10)
+         continue;
+      MqlDateTime d;
+      ZeroMemory(d);
+      d.year = (int)StringToInteger(StringSubstr(parts[i], 0, 4));
+      d.mon = (int)StringToInteger(StringSubstr(parts[i], 5, 2));
+      d.day = (int)StringToInteger(StringSubstr(parts[i], 8, 2));
+      int sz = ArraySize(g_fomcDays);
+      ArrayResize(g_fomcDays, sz + 1);
+      g_fomcDays[sz] = StructToTime(d);
+     }
+  }
+
+// jour de décision de la Fed : table officielle, complétée en direct par le calendrier MT5
+bool IsFOMCDay(const datetime t)
+  {
+   datetime day = DayStart(t);
+   for(int i = 0; i < ArraySize(g_fomcDays); i++)
+      if(g_fomcDays[i] == day)
+         return true;
+   for(int i = 0; i < ArraySize(g_newsTimes); i++)
+      if(DayStart(g_newsTimes[i]) == day && StringFind(g_newsNames[i], "USD") == 0 &&
+         (StringFind(g_newsNames[i], "Fed Interest Rate Decision") >= 0 || StringFind(g_newsNames[i], "FOMC Statement") >= 0))
+         return true;
+   return false;
+  }
+
+// dernier jour ouvré du mois (le jour ouvré suivant tombe dans un autre mois)
+bool IsMonthEnd(const datetime t)
+  {
+   datetime day = DayStart(t);
+   datetime next = day + 86400;
+   while(DowOf(next) == 0 || DowOf(next) == 6)
+      next += 86400;
+   MqlDateTime a, b;
+   TimeToStruct(day, a);
+   TimeToStruct(next, b);
+   return (a.mon != b.mon);
+  }
+
+// jour écarté par le calendrier : renvoie la raison (vide = jour tradable)
+string CalendarDayBlock(const datetime t)
+  {
+   if(InpSkipMonday && DowOf(t) == 1)
+      return "lundi (jour historiquement défavorable)";
+   if(InpSkipFOMC && IsFOMCDay(t))
+      return "décision de la Fed (FOMC) aujourd'hui";
+   if(InpSkipMonthEnd && IsMonthEnd(t))
+      return "dernier jour ouvré du mois (flux de fin de mois)";
+   return "";
+  }
+
+// symbole du courtier pour une paire (même préfixe / suffixe que le graphique, ex. EURUSD.m -> GBPUSD.m)
+string ResolveSymbol(const string pair)
+  {
+   string pre = "", suf = "";
+   int p = StringFind(_Symbol, "EURUSD");
+   if(p >= 0)
+     {
+      pre = StringSubstr(_Symbol, 0, p);
+      suf = StringSubstr(_Symbol, p + 6);
+     }
+   string c1 = pre + pair + suf;
+   if(SymbolSelect(c1, true))
+      return c1;
+   if(SymbolSelect(pair, true))
+      return pair;
+   return "";
+  }
+
+void InitStrength()
+  {
+   g_strengthOK = false;
+   if(StringFind(_Symbol, "EURUSD") < 0)
+     {
+      Print("IABot: force des devises calculée uniquement sur un graphique EURUSD - filtre inactif");
+      return;
+     }
+   g_symGU = ResolveSymbol("GBPUSD");
+   g_symUJ = ResolveSymbol("USDJPY");
+   g_symUC = ResolveSymbol("USDCHF");
+   g_strengthOK = (StringLen(g_symGU) > 0 && StringLen(g_symUJ) > 0 && StringLen(g_symUC) > 0);
+   if(g_strengthOK)
+      PrintFormat("IABot: force des devises calculée avec %s, %s, %s", g_symGU, g_symUJ, g_symUC);
+   else
+      Print("IABot: GBPUSD / USDJPY / USDCHF non disponibles chez ce courtier - filtre de force des devises inactif");
+  }
+
+// clôture M5 d'un symbole à l'heure d'une bougie de l'EURUSD (bougie qui débute à t, ou la précédente)
+bool CloseAt(const string sym, const datetime t, double &c)
+  {
+   c = 0.0;
+   int i = iBarShift(sym, PERIOD_M5, t, false);
+   if(i < 0)
+      return false;
+   c = iClose(sym, PERIOD_M5, i);
+   return (c > 0.0);
+  }
+
+// variation de force du jour (EUR, USD, GBP, JPY, CHF), en ATR H1, entre la 1re bougie M5 du jour et la bougie `shift`
+// (panier de 5 devises, mesuré contre le yen : identités EURJPY = EURUSD x USDJPY, etc.)
+bool CurrencyStrength(const int shift, double &s[])
+  {
+   ArrayResize(s, 5);
+   ArrayInitialize(s, 0.0);
+   if(!g_strengthOK)
+      return false;
+   datetime t1 = iTime(_Symbol, PERIOD_M5, shift);
+   if(t1 == 0)
+      return false;
+   datetime day = DayStart(t1);
+   int i0 = iBarShift(_Symbol, PERIOD_M5, day, false);
+   if(i0 < 0)
+      return false;
+   if(iTime(_Symbol, PERIOD_M5, i0) < day)
+      i0--;
+   if(i0 < shift)
+      return false;
+   datetime t0 = iTime(_Symbol, PERIOD_M5, i0);
+   double e0 = iClose(_Symbol, PERIOD_M5, i0), e1 = iClose(_Symbol, PERIOD_M5, shift);
+   double g0, g1, j0, j1, c0, c1;
+   if(e0 <= 0.0 || e1 <= 0.0 || !CloseAt(g_symGU, t0, g0) || !CloseAt(g_symGU, t1, g1) || !CloseAt(g_symUJ, t0, j0) ||
+      !CloseAt(g_symUJ, t1, j1) || !CloseAt(g_symUC, t0, c0) || !CloseAt(g_symUC, t1, c1))
+      return false;
+   double atr = 0.0;
+   if(!GetIndicatorValue(g_hATR, 0, 1, atr) || atr <= 0.0)
+      return false;
+   double vol = atr / e1;
+   double a[5], b[5];
+   a[0] = MathLog(e0) + MathLog(j0);
+   a[1] = MathLog(j0);
+   a[2] = MathLog(g0) + MathLog(j0);
+   a[3] = 0.0;
+   a[4] = MathLog(j0) - MathLog(c0);
+   b[0] = MathLog(e1) + MathLog(j1);
+   b[1] = MathLog(j1);
+   b[2] = MathLog(g1) + MathLog(j1);
+   b[3] = 0.0;
+   b[4] = MathLog(j1) - MathLog(c1);
+   double ma = (a[0] + a[1] + a[2] + a[3] + a[4]) / 5.0, mb = (b[0] + b[1] + b[2] + b[3] + b[4]) / 5.0;
+   for(int k = 0; k < 5; k++)
+      s[k] = ((b[k] - mb) - (a[k] - ma)) / vol;
+   return true;
+  }
+
+string StrengthText()
+  {
+   double s[];
+   if(!InpUseStrength)
+      return "filtre désactivé";
+   if(!g_strengthOK)
+      return (StringFind(_Symbol, "EURUSD") >= 0) ? "INDISPONIBLE (GBPUSD / USDJPY / USDCHF absents) : risque réduit de moitié" : "non applicable (EURUSD uniquement)";
+   if(!CurrencyStrength(1, s))
+      return "en attente des données";
+   string names[5] = {"EUR", "USD", "GBP", "JPY", "CHF"};
+   int idx[5] = {0, 1, 2, 3, 4};
+   for(int i = 0; i < 5; i++)
+      for(int j = i + 1; j < 5; j++)
+         if(s[idx[j]] > s[idx[i]])
+           {
+            int t = idx[i];
+            idx[i] = idx[j];
+            idx[j] = t;
+           }
+   string r = "";
+   for(int i = 0; i < 5; i++)
+      r += names[idx[i]] + StringFormat(" %+.1f", s[idx[i]]) + (i < 4 ? " > " : "");
+   r += (s[0] >= InpMinEURStrength) ? "  (euro OK pour vendre)" : "  (euro déjà trop faible : pas de vente)";
+   return r;
+  }
+
+//+------------------------------------------------------------------+
 //| Signal de la stratégie (bougies clôturées uniquement)             |
 //+------------------------------------------------------------------+
 // biais de la stratégie : -1 vendre la paire, +1 acheter, 0 paire non prise en charge
@@ -1623,6 +1858,14 @@ bool GetSignal(const datetime entryBarTime, int &dir, double &slDist, string &wh
         }
      }
 
+   // calendrier : lundi, décision de la Fed, fin de mois
+   string block = CalendarDayBlock(entryBarTime);
+   if(StringLen(block) > 0)
+     {
+      why = "Journée écartée : " + block;
+      return true;
+     }
+
    ENUM_SYMBOL_TRADE_MODE mode = (ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE);
    if(bias < 0 && rsi > InpRSIPullback && mode != SYMBOL_TRADE_MODE_LONGONLY)
       dir = -1;
@@ -1631,9 +1874,29 @@ bool GetSignal(const datetime entryBarTime, int &dir, double &slDist, string &wh
          dir = 1;
 
    if(dir == 0)
+     {
       why = StringFormat("Fenêtre ouverte - attente d'un rebond M5 (RSI %.1f)", rsi);
-   else
-      why = (dir > 0) ? "Signal ACHAT" : "Signal VENTE";
+      return true;
+     }
+   // force des devises : ne pas vendre un euro qui a déjà nettement baissé aujourd'hui (et inversement)
+   if(InpUseStrength && g_strengthOK)
+     {
+      double st[];
+      if(!CurrencyStrength(1, st))
+        {
+         why = "Signal écarté : données de force des devises momentanément indisponibles";
+         dir = 0;
+         return true;
+        }
+      // vente : force de l'euro >= seuil ; achat (sens forcé) : symétrique
+      if(st[0] * (dir < 0 ? 1.0 : -1.0) < InpMinEURStrength)
+        {
+         why = StringFormat("Signal écarté : force de l'euro du jour %+.2f ATR (seuil %+.2f)", st[0], InpMinEURStrength * (dir < 0 ? 1.0 : -1.0));
+         dir = 0;
+         return true;
+        }
+     }
+   why = (dir > 0) ? "Signal ACHAT" : "Signal VENTE";
    return true;
   }
 
@@ -1696,23 +1959,17 @@ string ForecastText(const datetime now)
    int h = SessionHour(now);
    if(!HourInWindow(h, InpSessionStart, InpSessionEnd))
       return "aucun avantage statistique mesuré à cette heure (19 ans de données MT5) - le robot observe";
+   // statistiques du robot v6 sur 19 ans de données MT5 réelles (EURUSD 2007-2025), par heure d'entrée
+   const int    hs[7] = {8, 9, 10, 11, 12, 13, 14};
+   const double ws[7] = {71.0, 70.0, 73.0, 76.0, 75.0, 78.0, 87.0};
+   const double es[7] = {0.110, 0.079, 0.085, 0.061, 0.045, 0.038, 0.055};
    double win = 0.0, er = 0.0;
-   // statistiques du robot v5 sur 19 ans de données MT5 réelles (EURUSD 2007-2025)
-   if(h == 11)
-     {
-      win = 71.0;
-      er = 0.049;
-     }
-   if(h == 12)
-     {
-      win = 72.0;
-      er = 0.035;
-     }
-   if(h == 13)
-     {
-      win = 77.0;
-      er = 0.067;
-     }
+   for(int k = 0; k < 7; k++)
+      if(hs[k] == h)
+        {
+         win = ws[k];
+         er = es[k];
+        }
    if(win <= 0.0)
       return "fenêtre ouverte (heure hors statistiques de référence)";
    return StringFormat("vente favorable - sur 19 ans, les entrées de %dh ont gagné %.0f%% du temps (%+.3f R/trade)", h, win, er);
@@ -1737,11 +1994,50 @@ string MarketAnalysisText(const datetime now)
    if(SymbolInfoTick(_Symbol, tk) && dh > dl)
       pos = (tk.bid - dl) / (dh - dl) * 100.0;
    double ph = iHigh(_Symbol, PERIOD_D1, 1), pl = iLow(_Symbol, PERIOD_D1, 1);
+   if(atr <= 0.0)
+      GetIndicatorValue(g_hATR, 0, 1, atr);
    double prevATR = (atr > 0.0 && ph > pl) ? (ph - pl) / atr : 0.0;
    s += "Volatilité : " + vol + "   |   prix à " + DoubleToString(pos, 0) + "% du range du jour\n";
-   s += "Filtre du jour : " + ((InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR) ? "FAVORABLE" : "défavorable (pas de trade aujourd'hui)") +
-        StringFormat(" - amplitude de la veille %.1f x ATR (seuil %.1f)", prevATR, InpMinPrevRangeATR) + "\n";
-   bool dayOK = (InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR);
+   // indicateurs complémentaires
+   double adx = 0.0, rsi14 = 0.0, e12 = 0.0, e26 = 0.0, e12p = 0.0, e26p = 0.0;
+   string ind = "";
+   if(GetIndicatorValue(g_hADX, 0, 1, adx))
+      ind += StringFormat("ADX H1 %.0f (%s)", adx, adx >= 25.0 ? "tendance" : "range");
+   if(GetIndicatorValue(g_hRSI14, 0, 1, rsi14))
+      ind += StringFormat(" | RSI14 M5 %.0f", rsi14);
+   if(GetIndicatorValue(g_hEma12H1, 0, 1, e12) && GetIndicatorValue(g_hEma26H1, 0, 1, e26) &&
+      GetIndicatorValue(g_hEma12H1, 0, 2, e12p) && GetIndicatorValue(g_hEma26H1, 0, 2, e26p) && atr > 0.0)
+      ind += StringFormat(" | MACD H1 %+.2f ATR (%s)", (e12 - e26) / atr, (e12 - e26) > (e12p - e26p) ? "monte" : "baisse");
+   double sum = 0.0, sq = 0.0;
+   int nb = 0;
+   for(int k = 1; k <= 20; k++)
+     {
+      double c = iClose(_Symbol, PERIOD_M5, k);
+      if(c <= 0.0)
+         break;
+      sum += c;
+      sq += c * c;
+      nb++;
+     }
+   if(nb == 20)
+     {
+      double mid = sum / 20.0, sd = MathSqrt(MathMax(0.0, sq / 20.0 - mid * mid));
+      if(sd > 0.0)
+         ind += StringFormat(" | Bollinger M5 %+.1f σ", (iClose(_Symbol, PERIOD_M5, 1) - mid) / sd);
+     }
+   double pc = iClose(_Symbol, PERIOD_D1, 1);
+   if(ph > pl && pc > 0.0)
+     {
+      double pv = (ph + pl + pc) / 3.0;
+      ind += StringFormat(" | Pivot %s R1 %s S1 %s", DoubleToString(pv, SymDigits()), DoubleToString(2.0 * pv - pl, SymDigits()), DoubleToString(2.0 * pv - ph, SymDigits()));
+     }
+   s += "Indicateurs : " + ind + "\n";
+   s += "Force des devises (jour) : " + StrengthText() + "\n";
+   string calBlock = CalendarDayBlock(now);
+   bool dayOK = (InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR) && StringLen(calBlock) == 0;
+   s += "Filtre du jour : " + (dayOK ? "FAVORABLE" : "défavorable (pas de trade aujourd'hui)") +
+        StringFormat(" - amplitude de la veille %.1f x ATR (seuil %.1f)", prevATR, InpMinPrevRangeATR) +
+        (StringLen(calBlock) > 0 ? " - " + calBlock : "") + "\n";
    bool volOK = (InpMaxVolatility <= 0.0 || atrL <= 0.0 || atr <= InpMaxVolatility * atrL);
    string newsInfo = "";
    string forecast = ForecastText(now);
@@ -1810,6 +2106,8 @@ void UpdatePanel(const bool force)
    s += "   |   Trades du jour : " + IntegerToString(g_tradesToday) + (InpMaxTradesPerDay > 0 ? "/" + IntegerToString(InpMaxTradesPerDay) : "") + "\n";
    s += "Résultat du jour : " + FmtMoney(g_closedPLToday) + "   |   Drawdown : " + DoubleToString(CurrentDrawdownPct(), 2) + "% (max " + DoubleToString(InpMaxDrawdownPct, 1) + "%)\n";
 
+   int shown = 0, npos = 0;
+   double totR = 0.0, totP = 0.0;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong ticket = PositionGetTicket(i);
@@ -1817,6 +2115,8 @@ void UpdatePanel(const bool force)
          continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
          continue;
+      npos++;
+      totP += PositionGetDouble(POSITION_PROFIT);
       bool isBuy = ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
       double op = PositionGetDouble(POSITION_PRICE_OPEN);
       double psl = PositionGetDouble(POSITION_SL);
@@ -1824,11 +2124,16 @@ void UpdatePanel(const bool force)
       double R = PositionRisk(ticket, op, psl, ptp);
       double cur = PositionGetDouble(POSITION_PRICE_CURRENT);
       double pr = (R > 0.0) ? (isBuy ? (cur - op) / R : (op - cur) / R) : 0.0;
+      totR += pr;
+      if(++shown > 3)
+         continue;
       s += "Position : " + (isBuy ? "ACHAT " : "VENTE ") + DoubleToString(PositionGetDouble(POSITION_VOLUME), VolumeDigits()) +
            " @ " + DoubleToString(op, SymDigits()) + "  SL " + DoubleToString(psl, SymDigits()) +
            "  TP " + DoubleToString(ptp, SymDigits()) + "  (" + DoubleToString(pr, 2) + " R, " +
            FmtMoney(PositionGetDouble(POSITION_PROFIT)) + ")\n";
      }
+   if(npos > 3)
+      s += StringFormat("... %d positions au total : %+.2f R cumulés, ", npos, totR) + FmtMoney(totP) + "\n";
    s += "Statut : " + g_status;
    if(StringLen(s) > 2000)
       s = StringSubstr(s, 0, 2000);   // limite d'affichage de Comment()
@@ -1908,15 +2213,15 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    if(InpProfile == FX_PROFILE_WINRATE)
      {
-      g_tpR = 3.0;
-      g_beR = 1.0;
+      g_tpR = 2.0;
+      g_beR = 0.7;
       g_condExit = true;
      }
    else
       if(InpProfile == FX_PROFILE_RETURN)
         {
-         g_tpR = 3.0;
-         g_beR = 1.0;
+         g_tpR = 2.0;
+         g_beR = 0.7;
          g_condExit = false;
         }
       else
@@ -1942,6 +2247,10 @@ int OnInit()
    g_hEmaH1 = iMA(_Symbol, PERIOD_H1, 50, 0, MODE_EMA, PRICE_CLOSE);
    g_hEmaH4 = iMA(_Symbol, PERIOD_H4, 50, 0, MODE_EMA, PRICE_CLOSE);
    g_hEmaD1 = iMA(_Symbol, PERIOD_D1, 50, 0, MODE_EMA, PRICE_CLOSE);
+   g_hADX = iADX(_Symbol, PERIOD_H1, 14);
+   g_hRSI14 = iRSI(_Symbol, PERIOD_M5, 14, PRICE_CLOSE);
+   g_hEma12H1 = iMA(_Symbol, PERIOD_H1, 12, 0, MODE_EMA, PRICE_CLOSE);
+   g_hEma26H1 = iMA(_Symbol, PERIOD_H1, 26, 0, MODE_EMA, PRICE_CLOSE);
    if(g_hATR == INVALID_HANDLE || g_hRSI == INVALID_HANDLE)
      {
       PrintFormat("IABot: impossible de créer les indicateurs (erreur %d)", GetLastError());
@@ -1965,6 +2274,9 @@ int OnInit()
 
    BuildNewsCurrencies();
    RefreshNews();
+   LoadFOMCDates();
+   if(InpUseStrength)
+      InitStrength();
 
    // le premier signal sera évalué à la prochaine bougie (pas d'entrée tardive)
    g_lastSignalBar = iTime(_Symbol, InpSignalTF, 0);
@@ -1972,8 +2284,8 @@ int OnInit()
    if(_Period != InpSignalTF)
       PrintFormat("IABot: info - le graphique est en %s, les signaux sont calculés en %s",
                   TFToString(_Period), TFToString(InpSignalTF));
-   PrintFormat("IABot: démarré sur %s | compte %s | remplissage %d | risque %.2f%% | SL %.1f ATR | TP %.1f R",
-               _Symbol, (g_isHedging ? "hedging" : "netting"), (int)g_filling, InpRiskPercent, InpSL_ATR, g_tpR);
+   PrintFormat("IABot: démarré sur %s | compte %s | remplissage %d | risque %.2f%% | SL %.1f ATR | TP %.1f R | fenêtre %dh-%dh | %d positions max",
+               _Symbol, (g_isHedging ? "hedging" : "netting"), (int)g_filling, InpRiskPercent, InpSL_ATR, g_tpR, InpSessionStart, InpSessionEnd, InpMaxPositions);
    if(TradeBias() == 0)
       PrintFormat("IABot: ATTENTION - robot spécialisé EURUSD, %s n'est pas pris en charge", _Symbol);
    if(g_ddHalt)
@@ -2004,6 +2316,18 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_hEmaH4);
    if(g_hEmaD1 != INVALID_HANDLE)
       IndicatorRelease(g_hEmaD1);
+   if(g_hADX != INVALID_HANDLE)
+      IndicatorRelease(g_hADX);
+   if(g_hRSI14 != INVALID_HANDLE)
+      IndicatorRelease(g_hRSI14);
+   if(g_hEma12H1 != INVALID_HANDLE)
+      IndicatorRelease(g_hEma12H1);
+   if(g_hEma26H1 != INVALID_HANDLE)
+      IndicatorRelease(g_hEma26H1);
+   g_hADX = INVALID_HANDLE;
+   g_hRSI14 = INVALID_HANDLE;
+   g_hEma12H1 = INVALID_HANDLE;
+   g_hEma26H1 = INVALID_HANDLE;
    g_hEmaM5 = INVALID_HANDLE;
    g_hEmaH1 = INVALID_HANDLE;
    g_hEmaH4 = INVALID_HANDLE;

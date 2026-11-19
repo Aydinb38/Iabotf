@@ -4,3 +4,4 @@ tools/mql5emu/build/
 __pycache__/
 *.pyc
 *_grid.csv
+tools/research/v6_cache/
