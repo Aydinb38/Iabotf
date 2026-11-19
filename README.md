@@ -87,6 +87,9 @@ Toutes ces idées ont été testées sur 19 ans, avec des réglages choisis sur 
 | Suivi de tendance journalier (Donchian 20/10) | **Perdant** depuis 2013 : l'EURUSD revient vers sa moyenne bien plus qu'il ne suit les tendances. |
 | Filtres de régime (tendance journalière, hebdomadaire…) | Aucun ne se comporte de la même façon sur 2007-2018 et sur 2019-2025 : ce serait du hasard. |
 | Filtres « nuit asiatique » et volatilité 0,9 (v8) | Sans effet sur 2007-2018 : retirés en v9. |
+| Couper un trade qui perd plus de 0,3 à 0,7 R après 1 à 4 h | Perte moyenne plus petite (-0,6 R au lieu de -0,9 R), mais moins de trades gagnants (59 à 69 %) et moins de bénéfice : ces trades se rattrapent souvent. |
+| Attendre une bougie de confirmation avant de vendre | Même taux de réussite, 30 à 80 % de trades en moins, nettement moins de bénéfice, négatif en 2026. |
+| Petit compte : refuser le lot minimum quand il dépasse 1,5 fois la mise prévue | Légèrement moins bon (2 000 $ : +372 % au lieu de +377 %) : ces trades restent rentables. |
 
 **Les 4 profils v10** (votre période 2019-2025, 50 000 $ au départ, gains composés) :
 
@@ -220,6 +223,14 @@ pour information, ce n'est plus un filtre)*
 > - maintien jusqu'à **15 h**.
 
 - **Testeur MT5** : utilisez **EURUSD, M5**, avec « Chaque tick basé sur les ticks réels ».
+- **Capital conseillé : 5 000 $ ou plus.** Le lot minimum est de 0,01. Avec moins, les mises ne peuvent pas suivre
+  exactement la pondération horaire ni l'encaissement de 70 %. Sur 2019-2025, le gain passe de +450 % (50 000 $) à
+  +377 % (2 000 $) et +319 % (1 000 $).
+- **Lire le rapport MT5.**
+  - MT5 compte chaque fermeture comme un trade, et chaque encaissement de 70 % est un petit trade gagnant. Le « gain
+    moyen » affiché paraît donc bien plus petit que la « perte moyenne » : c'est normal. Le profit factor et la
+    courbe de capital sont les bons repères.
+  - Les entrées de 14 h ne misent que 0,2 fois la mise normale : leur résultat pèse très peu.
 - **Compte** : ECN à bas coûts (spread + commission ≤ 1 pip sur EURUSD). Le robot fait environ 650 trades par an.
 
 **Si quelque chose ne fonctionne pas**, envoyez-moi :
