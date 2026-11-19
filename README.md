@@ -1,4 +1,4 @@
-# IABot EURUSD v7 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
+# IABot EURUSD v8 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
 
 Expert Advisor **entièrement automatique**, qui travaille **uniquement sur EURUSD**. Il ne lit **aucune autre paire** :
 un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout seul :
@@ -7,13 +7,15 @@ un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout s
   - tendances M5/H1/H4/D1, ADX, MACD, Bollinger, RSI, points pivots ;
   - volatilité, calendrier économique, prévision par heure ;
 - il trade de **8 h à 15 h** (heure serveur), avec jusqu'à **10 positions par jour** ;
-- il ne prend que les **meilleurs rebonds** : RSI(3) > 65 **et** prix à plus de 1,5 écart-type au-dessus de sa
-  moyenne (Bollinger) ;
-- il **écarte les jours défavorables** : lundi, décision de la Fed, dernier jour du mois, veille trop calme,
-  volatilité excessive ;
+- **avant chaque trade, il vérifie 10 conditions** et les affiche à l'écran :
+  - fenêtre horaire et calendrier (lundi, décision de la Fed, fin de mois) ;
+  - amplitude de la veille et de la nuit asiatique, volatilité ;
+  - annonces économiques et spread ;
+  - rebond étiré : RSI(3) > 65 **et** prix à plus de 1,5 écart-type au-dessus de sa moyenne (Bollinger) ;
+  - nombre de positions déjà ouvertes ;
 - il **met plus de risque le matin** (de 8 h à 11 h, les meilleures heures) et moins l'après-midi ;
 - il pose **immédiatement le Stop Loss et le Take Profit**, puis passe au **break-even** ;
-- il **sort en gain chaque fois que c'est possible** : environ **73 % de trades gagnants** ;
+- il **sort en gain chaque fois que c'est possible** : environ **77 % de trades gagnants** ;
 - il ne prend pas de position autour des **annonces économiques** (calendrier MT5 en direct) ;
 - il protège le capital : perte journalière max, coupe-circuit, filtres de spread et de volatilité.
 
@@ -28,72 +30,84 @@ Aucun robot ne peut garantir des gains, et aucun ne rend milliardaire. Celui-ci 
 Les chiffres ci-dessous viennent du **vrai code du robot**, exécuté sur **19 ans de données MT5 réelles (EURUSD 2007-2025)**,
 avec l'heure serveur exacte et le spread réel de chaque minute, puis sur 2026. Commencez **sur un compte démo**.
 
-## 1. Ce qui a changé (v6 → v7)
+## 1. Ce qui a changé (v7 → v8)
 
-- **Le « bug » de la v6.** La v6 lisait aussi GBPUSD, USDJPY et USDCHF pour mesurer la force des devises. Dans le
-  testeur MT5, les cours de ces autres paires sont souvent « indisponibles » tant que leur historique n'est pas
-  chargé. La v6 ignorait alors ses signaux : elle pouvait ne prendre presque aucun trade. **La v7 ne lit que
-  l'EURUSD** : ce problème ne peut plus arriver.
-- **Remplacement 100 % EURUSD.** Le meilleur substitut mesuré sur 19 ans est l'**étirement du rebond** (Bollinger).
-  Plus le prix est monté au-dessus de sa moyenne 20, meilleure est la vente, et c'est vrai sur 2007-2012, 2013-2018
-  et 2019-2025.
-- **Risque pondéré par heure.** En moyenne, les entrées de 8 h rapportent +0,17 R, celles de 14 h +0,02 R. Le risque
-  passe donc à ×1,5 de 8 h à 11 h et à ×0,5 après 13 h.
-- **Stop à 3 ATR au lieu de 4.** Pour un même drawdown, cela donne environ 28 % de gain en plus.
-- **Code simplifié.** Les fonctions multi-paires ont été retirées. Les seules nouveautés restent des fonctions MQL5
-  standards.
+Objectif : plus de trades gagnants, plus de régularité, sans perdre en gain. Chaque changement a été vérifié sur
+2007-2012, 2013-2018 et 2019-2025, puis sur 2026.
 
-| Votre période (2019-2025, 50 000 $, mêmes données) | v5 | v6 | **v7** |
-|---|---:|---:|---:|
-| Gain net | +32 695 $ | +81 082 $ | **+142 847 $ (+286 %)** |
-| Trades | 2 118 | 7 044 | **5 017** |
-| % gagnants | 73,7 % | 74,0 % | **73,7 %** |
-| Profit factor | 1,22 | 1,35 | **1,33** |
-| Drawdown max | 10,6 % | 13,2 % | **12,6 %** |
-| Années positives | 5/7 | 7/7 | **7/7** |
+- **Sortie retravaillée.** Après le test de 324 combinaisons, le robot pose un stop à **3,5 ATR** au lieu de 3, et le
+  break-even passe à **+0,5 R** au lieu de +0,7. Les trades qui finissent au stop complet passent de 22,8 % à
+  18,2 %.
+- **Nuit asiatique.** Le robot ne vend pas quand la nuit asiatique (1 h-8 h) a été trop calme, soit moins de
+  1,4 × l'ATR. Ces jours-là, la vente européenne ne rapporte presque rien, et c'est vrai sur les 3 périodes.
+- **Volatilité.** Le seuil passe de 1,0 à 0,9 : le robot ne trade que quand le marché est calme. Les trades les
+  plus agités ne rapportaient presque rien.
+- **10 contrôles visibles avant chaque trade.** Le panneau affiche par exemple « Contrôles avant trade (9/10) :
+  fenêtre OK | calendrier OK | veille 11.0 OK | nuit Asie 1.9 OK | volatilité 0.59 OK | news OK | spread OK |
+  RSI 66 OK | Bollinger -0.6 NON | positions OK ».
 
-À titre de repère, la v5 sur ces mêmes données donne +32 700 $, contre environ 35 000 $ dans votre testeur MT5 :
-l'émulateur reproduit bien votre courtier.
+| Votre période (2019-2025, 50 000 $, mêmes données) | v5 | v6 | v7 | **v8** |
+|---|---:|---:|---:|---:|
+| Gain net | +32 695 $ | +81 082 $ | +142 847 $ | **+163 062 $ (+326 %)** |
+| % gagnants | 73,7 % | 74,0 % | 73,7 % | **77,4 %** |
+| Profit factor | 1,22 | 1,35 | 1,33 | **1,49** |
+| Drawdown max | 10,6 % | 13,2 % | 12,6 % | 12,7 % |
+| Années positives | 5/7 | 7/7 | 7/7 | **7/7** |
 
-## 2. Résultats v7 (réglages par défaut : risque de base 0,25 %)
+**Régularité (19 ans) :**
+
+| Périodes positives | v7 | **v8** |
+|---|---:|---:|
+| Jours tradés | 67 % | **73 %** |
+| Semaines | 65 % | **69 %** |
+| Mois | 68 % | 68 % |
+| Trimestres | 82 % | 78 % |
+| Trades perdus au stop complet | 22,8 % | **18,2 %** |
+
+## 2. Résultats v8 (réglages par défaut : risque de base 0,3 %)
 
 | Données | Trades | **% gagnants** | Profit factor | Résultat | Drawdown max |
 |---|---:|---:|---:|---:|---:|
-| **MT5 réel 2007 → 2025** (19 ans, 10 000 $) | 11 904 | **72,9 %** | 1,35 | **+4 220 %** | 13,0 % |
-| **Votre période 2019 → 2025** (50 000 $) | 5 017 | **73,7 %** | 1,33 | **+286 %** | 12,6 % |
-| **2026** (avr. → sept., jamais utilisé pour régler le robot) | 247 | **73,3 %** | 1,12 | +2,2 % | 6,0 % |
+| **MT5 réel 2007 → 2025** (19 ans, 10 000 $) | 9 085 | **76,7 %** | 1,50 | **+3 379 %** | 13,3 % |
+| **Votre période 2019 → 2025** (50 000 $) | 4 009 | **77,4 %** | 1,49 | **+326 %** | 12,7 % |
+| **2026** (avr. → sept., jamais utilisé pour régler le robot) | 196 | **75,5 %** | 1,26 | +3,6 % | 4,9 % |
 
-**Les 19 années sont positives**, sans exception :
+**Les 19 années sont positives** :
 
 | Année | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Trades | 441 | 512 | 565 | 546 | 533 | 564 | 604 | 637 | 656 | 577 | 550 | 702 | 638 | 759 | 702 | 709 | 782 | 792 | 635 |
-| % gagnants | 67 | 72 | 79 | 74 | 72 | 71 | 67 | 73 | 72 | 74 | 74 | 74 | 72 | 73 | 77 | 74 | 74 | 71 | 75 |
-| Résultat (R) | +17 | +47 | +92 | +76 | +79 | +95 | +49 | +66 | +64 | +30 | +61 | +112 | +75 | +53 | +72 | +76 | +76 | +40 | +56 |
+| Trades | 324 | 398 | 442 | 418 | 433 | 429 | 461 | 429 | 476 | 433 | 379 | 454 | 448 | 578 | 603 | 590 | 646 | 607 | 537 |
+| % gagnants | 67 | 75 | 79 | 76 | 74 | 75 | 72 | 83 | 75 | 78 | 76 | 79 | 73 | 77 | 80 | 78 | 78 | 76 | 80 |
+| Résultat (R) | +8 | +22 | +58 | +56 | +56 | +86 | +24 | +86 | +46 | +32 | +30 | +76 | +33 | +46 | +54 | +79 | +68 | +57 | +55 |
 
-**Selon le risque choisi** (19 ans, 10 000 $ au départ) :
+**Selon le risque choisi :**
 
 | Risque de base par trade | Résultat 19 ans | Drawdown max | Votre période (50 000 $) |
 |---|---:|---:|---:|
-| 0,20 % (prudent) | +1 883 % | 10,4 % | - |
-| **0,25 % (défaut)** | **+4 220 %** | **13,0 %** | **+142 847 $** (DD 12,6 %) |
-| 0,30 % (agressif) | +8 720 % | 15,7 % | +195 586 $ (DD 15,0 %) |
+| 0,25 % (prudent) | +1 840 % | 11,1 % | +118 802 $ (DD 10,9 %) |
+| **0,30 % (défaut)** | **+3 379 %** | **13,3 %** | **+163 062 $** (DD 12,7 %) |
+| 0,35 % (agressif) | +6 068 % | 15,5 % | +212 663 $ (DD 14,8 %) |
 
-- **Frais.** Avec 0,3 pip de frais en plus sur chaque trade, le résultat sur 19 ans reste positif : +1 970 %, PF 1,31,
-  drawdown 13,3 %.
-- **2026 plus faible.** L'avantage est plus faible en 2026 : +2,2 % sur 6 mois. Une période défavorable de plusieurs
-  mois reste possible.
+- **Frais.** Avec 0,3 pip de frais en plus sur chaque trade, le résultat sur 19 ans reste positif : +1 918 %, PF 1,45,
+  drawdown 13,5 %.
+- **Comparaison avec la v7.** Sur 19 ans, la v8 gagne un peu moins que la v7 (+3 379 % contre +4 220 %), car elle
+  trade moins. Mais elle gagne plus sur 2019-2025 et sur 2026, et résiste mieux aux frais.
 
 Le détail est dans [`results/backtest_results_eurusd.csv`](results/backtest_results_eurusd.csv).
 
 ## 3. Pourquoi le robot ne trade pas 24 h/24
 
-Toutes les heures ont été testées dans les deux sens sur 19 ans de données MT5, avec plus de 800 000 trades
-candidats :
+Toutes les heures ont été testées dans les deux sens sur 19 ans de données MT5. La v8 a refait ce test avec les filtres
+actuels (rebond étiré, volatilité, veille) :
 
 - **8 h-15 h, vente** : positif sur toutes les périodes. C'est la fenêtre du robot.
 - **Nuit et rollover (20 h-1 h)** : perdant dans les deux sens. Les spreads s'écartent et les prix « sautent ».
 - **Asie, après-midi américain, achats** : des effets instables, qui changent de signe d'une période à l'autre.
+- **Jours écartés** (lundi, Fed, fin de mois) : ni la vente ni l'achat n'y sont rentables.
+- **Annonces économiques** (historique 2007-2025) :
+  - les entrées autour d'une annonce restent rentables ;
+  - fermer avant une annonce une position en perte coûtait 0,1 R par trade ;
+  - le robot ne prend donc simplement pas de position 30 min avant ou après une annonce majeure.
 - **Effet des « fixings »** : un effet documenté (Krohn et al.), où le dollar monte avant les fixings de la BCE et
   de Londres puis se retourne. Testé à toutes les heures, il est **perdant après le spread** sur l'EURUSD : il n'est
   pas utilisé.
@@ -116,16 +130,16 @@ repose sur des indicateurs vérifiés période par période :
 | Étape | Règle (bougies clôturées uniquement, aucun repaint) |
 |---|---|
 | Sens | **Vente** d'EURUSD (l'euro faiblit pendant la séance européenne : Ranaldo 2009, Breedon & Ranaldo 2013). |
-| Filtre du jour | Amplitude de la veille ≥ **6 × ATR(14) H1**. Pas de trade le **lundi**, le jour d'une **décision de la Fed** ni le **dernier jour ouvré du mois**. |
-| Filtre de volatilité | ATR(14) H1 ≤ sa moyenne sur 240 heures. |
+| Filtre du jour | Amplitude de la veille ≥ **6 × ATR(14) H1**. **Nuit asiatique (1 h-8 h) ≥ 1,4 × ATR**. Pas de trade le **lundi**, le jour d'une **décision de la Fed** ni le **dernier jour ouvré du mois**. |
+| Filtre de volatilité | ATR(14) H1 ≤ **0,9 ×** sa moyenne sur 240 heures. |
 | Fenêtre d'entrée | **8 h - 15 h, heure serveur GMT+2/+3**, du mardi au vendredi. |
 | Signal | Rebond M5 étiré : **RSI(3) > 65** et clôture à plus de **1,5 écart-type** au-dessus de la moyenne 20 (Bollinger). |
 | Fréquence | **10 positions par jour** au maximum, avec au moins **15 min** entre deux entrées. |
-| Stop Loss | **3 × ATR(14) H1**. Cette distance définit « 1 R ». |
+| Stop Loss | **3,5 × ATR(14) H1**. Cette distance définit « 1 R ». |
 | Take Profit | **2 R**, posé à l'ouverture. |
-| Break-even | À **+0,7 R**, le stop passe à l'entrée + 0,1 R. |
+| Break-even | À **+0,5 R**, le stop passe à l'entrée + 0,1 R. |
 | Sortie | À **15 h** pour les positions en gain. Les positions en perte sont gardées et fermées dès qu'elles atteignent +0,05 R, au plus tard à **17 h**. |
-| Risque | **0,25 %** de base par trade : **×1,5 de 8 h à 11 h**, ×1 de 11 h à 13 h, **×0,5 de 13 h à 15 h**. |
+| Risque | **0,3 %** de base par trade : **×1,5 de 8 h à 11 h**, ×1 de 11 h à 13 h, **×0,5 de 13 h à 15 h**. |
 
 ## 5. Ce que le robot affiche en temps réel
 
@@ -134,16 +148,17 @@ IABot EURUSD  |  EURUSD  |  compte hedging  |  magic 26111603
 Biais : VENTE (euro faible en séance européenne)   |   RSI(3) M5 : 66.1
 Fenêtre d'entrée 8h-15h : OUVERTE   |   Sortie 15h (si perte : jusqu'à 17h)   |   Spread : 11 pts
 Tendances : M5 baisse | H1 hausse | H4 hausse | D1 hausse   |   séance : Europe
-Volatilité : calme (x0.59, seuil 1.00 : OK)   |   prix à 30% du range du jour
+Volatilité : calme (x0.59, seuil 0.90 : OK)   |   prix à 30% du range du jour
 Indicateurs : ADX H1 34 (tendance) | RSI14 M5 45 | MACD H1 +0.51 ATR (baisse) | Bollinger M5 -0.6 ET (seuil 1.5) | Pivot 1.08973 R1 1.09684 S1 1.08476
 Filtre du jour : FAVORABLE - amplitude de la veille 11.0 x ATR (seuil 6.0)
-Prévision : vente favorable - sur 19 ans, les entrées de 10h ont gagné 70% du temps (+0.089 R/trade)
+Prévision : vente favorable - sur 19 ans, les entrées de 10h ont gagné 75% du temps (+0.091 R/trade)
+Contrôles avant trade (9/10) : fenêtre OK | calendrier OK | veille 11.0 OK | nuit Asie 1.9 OK | volatilité 0.59 OK | news OK | spread OK | RSI 66 OK | Bollinger -0.6 NON | positions OK
 News : USD US CPI m/m à 2025.03.12 15:30
-Mémoire : 60 trades, bilan 6.9 R  ->  risque normal
-Risque/trade : 0.38% (base 0.25% x1.5 selon l'heure)   |   Trades du jour : 2/10
-Résultat du jour : 0.00 USD   |   Drawdown : 0.21% (max 20.0%)
-Position : VENTE 0.11 @ 1.09040  SL 1.09358  TP 1.08403  (0.20 R, 7.04 USD)
-Position : VENTE 0.11 @ 1.09018  SL 1.09352  TP 1.08350  (0.13 R, 4.62 USD)
+Mémoire : 52 trades, bilan 0.3 R  ->  risque normal
+Risque/trade : 0.45% (base 0.30% x1.5 selon l'heure)   |   Trades du jour : 2/10
+Résultat du jour : 0.00 USD   |   Drawdown : 0.22% (max 20.0%)
+Position : VENTE 0.12 @ 1.09040  SL 1.09411  TP 1.08297  (0.17 R, 7.68 USD)
+Position : VENTE 0.11 @ 1.09018  SL 1.09408  TP 1.08238  (0.11 R, 4.62 USD)
 Statut : Rebond pas assez étiré : Bollinger -0.59 écart-type (seuil 1.50)
 ```
 *(panneau réel produit par l'émulateur le 12/03/2025 à 10h40, compte de 10 000 $)*
@@ -185,7 +200,7 @@ Statut : Rebond pas assez étiré : Bollinger -0.59 écart-type (seuil 1.50)
 
 - **Testeur MT5** : utilisez **EURUSD, M5**, avec « Chaque tick basé sur les ticks réels ». Au démarrage, le journal
   affiche « IABot: démarré sur EURUSD … fenêtre 8h-15h | 10 positions max ».
-- **Compte** : ECN à bas coûts (spread + commission ≤ 1 pip sur EURUSD). Le robot fait environ 650 trades par an.
+- **Compte** : ECN à bas coûts (spread + commission ≤ 1 pip sur EURUSD). Le robot fait environ 500 à 600 trades par an.
 
 **Si quelque chose ne fonctionne pas**, envoyez-moi :
 - le message de l'onglet **Erreurs** de MetaEditor (compilation) ;
@@ -195,17 +210,18 @@ Statut : Rebond pas assez étiré : Bollinger -0.59 écart-type (seuil 1.50)
 
 | Paramètre | Défaut | Rôle |
 |---|---|---|
-| Risque de base par trade (%) | 0,25 | 0,3 = plus agressif : +391 % au lieu de +286 % sur 2019-2025, drawdown 15 %. |
+| Risque de base par trade (%) | 0,3 | 0,35 = plus agressif : +425 % au lieu de +326 % sur 2019-2025, drawdown 15 %. |
 | Risque pondéré selon l'heure | oui | ×1,5 de 8 h à 11 h, ×0,5 après 13 h. |
 | Positions simultanées / trades par jour | 10 / 10 | |
 | Minutes entre deux entrées | 15 | |
 | Fenêtre / sortie / maintien si perte | 8-15 h / 15 h / 17 h | Heure serveur. |
 | Vente si RSI(3) > | 65 | |
 | Seuil Bollinger (écarts-types) | 1,5 | 0 = désactivé. Plus haut = moins de trades, mais meilleurs. |
+| Nuit asiatique minimale (x ATR) | 1,4 | 0 = désactivé. |
 | Lundi / Fed / fin de mois | écartés | Chacun peut être réactivé. |
 | Filtre du jour (amplitude veille ≥ x ATR) | 6,0 | 0 = désactivé. |
-| Filtre de volatilité (ATR ≤ x moyenne) | 1,0 | 0 = désactivé. |
-| SL / TP / break-even | 3 ATR / 2 R / 0,7 R | Profil « taux de réussite max ». |
+| Filtre de volatilité (ATR ≤ x moyenne) | 0,9 | 0 = désactivé. |
+| SL / TP / break-even | 3,5 ATR / 2 R / 0,5 R | Profil « taux de réussite max ». |
 | Fermer avant une news une position en perte | non | Coûtait 0,1 R par trade sur 2007-2025. |
 | Perte journalière / drawdown max | 3 % / 20 % | Coupe-circuits. |
 
@@ -226,7 +242,7 @@ Les **19 scénarios automatiques** sont décrits dans
 - redémarrage en pleine position ;
 - AddressSanitizer et UBSan.
 
-La recherche v7 se trouve dans `tools/research/v7_*.py`, avec la bibliothèque `v6lib.py`. La préparation des
+La recherche se trouve dans `tools/research/v7_*.py` et `v8_*.py`, avec la bibliothèque `v6lib.py`. La préparation des
 données est dans `tools/data/` : `clean_m1.py` (nettoyage des artefacts du flux) et `convert_calendar.py`.
 
 ```bash
@@ -237,8 +253,9 @@ build/eurusd/emu --data data/m1/EURUSD_MT5c.csv --symbol EURUSD --commission 0
 
 ## 10. Limites connues
 
-- Avantage **réel mais modeste** : environ +0,10 R par trade. Il dépend des frais du courtier.
-- **2026 est plus faible** (+2 % sur 6 mois) : une période défavorable peut durer plusieurs mois.
+- Avantage **réel mais modeste** : environ +0,11 R par trade. Il dépend des frais du courtier.
+- **2026 est plus faible** (+3,6 % sur 6 mois) : une période défavorable peut durer plusieurs mois.
+- **Jours sans trade.** Le robot ne trade qu'environ 1 jour sur 2 : les autres jours ne réunissent pas les 10 conditions.
 - Le taux de réussite élevé vient de la sortie « dès que la position repasse en gain ». Les gains sont souvent petits
   et les pertes plus grosses : c'est l'ensemble qui est positif.
 - Les positions d'une même journée sont corrélées : une mauvaise journée touche plusieurs positions à la fois.
@@ -247,13 +264,13 @@ build/eurusd/emu --data data/m1/EURUSD_MT5c.csv --symbol EURUSD --commission 0
 ## 11. Contenu du dépôt
 
 ```
-MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v7, 100 % EURUSD)
+MQL5/Experts/IABot/IABot_EURUSD.mq5  ← LE robot (v8, 100 % EURUSD)
 MQL5/Experts/IABot/IABot_FX_M5.mq5   ← ancien robot, non maintenu
 MQL5/Experts/IABot/IABot_M5.mq5      ← ancien robot (or), non maintenu
 results/                             ← résultats détaillés
 tools/mql5emu/                       ← émulateur MQL5
 tools/verify/                        ← scénarios de vérification + rapports
-tools/research/                      ← toute la recherche (v7_*.py : étude v7)
+tools/research/                      ← toute la recherche (v8_*.py : étude v8)
 tools/data/                          ← téléchargement, nettoyage et préparation des données
 ```
 

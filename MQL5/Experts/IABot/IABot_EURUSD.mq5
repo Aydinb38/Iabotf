@@ -6,30 +6,29 @@
 //|                                                                  |
 //|  Ce que le robot a appris (19 ans de données MT5 réelles EURUSD  |
 //|  2007-2025, heure serveur exacte, spread réel, calendrier        |
-//|  économique 2007-2025) :                                         |
+//|  économique 2007-2025, 2026 en contrôle) :                       |
 //|   - l'euro tend à baisser face au dollar pendant la séance       |
 //|     européenne (Ranaldo 2009, Breedon & Ranaldo 2013), surtout   |
 //|     en début de séance : ventes sur rebond M5 de 8h à 15h        |
 //|     (heure serveur GMT+2/+3), jusqu'à 10 positions par jour ;    |
-//|   - meilleures entrées : rebond étiré (RSI(3) > 65 et prix à     |
-//|     plus de 1,5 écart-type au-dessus de sa moyenne 20, Bollinger) |
-//|   - jours écartés : amplitude de la veille < 6 x ATR horaire,    |
-//|     volatilité > sa moyenne, lundi, décision de la Fed (FOMC),   |
-//|     dernier jour ouvré du mois ;                                  |
+//|   - entrée seulement si TOUT est validé : rebond étiré (RSI(3)   |
+//|     > 65 et Bollinger > 1,5 écart-type), veille >= 6 ATR, nuit   |
+//|     asiatique >= 1,4 ATR, volatilité <= 0,9 x sa moyenne, pas    |
+//|     lundi / Fed / fin de mois, pas d'annonce, spread correct ;   |
 //|   - risque pondéré selon l'heure : x1,5 de 8h à 11h, x0,5 après  |
-//|     13h (les entrées du matin rapportent 3 à 8 fois plus).       |
+//|     13h (les entrées du matin rapportent le plus).               |
 //|                                                                  |
-//|  Gestion : SL = 3 x ATR(14) H1, TP = 2 R, break-even à +0,7 R.   |
+//|  Gestion : SL = 3,5 x ATR(14) H1, TP = 2 R, break-even à +0,5 R. |
 //|  Sortie à 15h si la position est en gain, sinon elle est gardée  |
 //|  et fermée dès qu'elle repasse en gain, au plus tard à 17h.      |
-//|  Temps réel : tendances M5/H1/H4/D1, ADX, MACD, Bollinger, RSI,  |
-//|  pivots, volatilité, calendrier économique MT5, prévision.       |
+//|  Temps réel : liste des contrôles, tendances M5/H1/H4/D1, ADX,   |
+//|  MACD, Bollinger, RSI, pivots, volatilité, calendrier MT5.       |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "7.00"
+#property version     "8.00"
 #property description "Robot autonome 100 % EURUSD (M5) : séance européenne 8h-15h, jusqu'à 10 trades/jour,"
-#property description "rebonds étirés (RSI + Bollinger), filtres calendrier (lundi, Fed, fin de mois), amplitude,"
-#property description "volatilité, risque pondéré par heure, SL 3 ATR H1, TP 2 R, break-even 0,7 R, sortie 15h-17h."
+#property description "rebonds étirés (RSI + Bollinger), 10 contrôles avant chaque trade (calendrier, nuit asiatique,"
+#property description "volatilité, news...), risque pondéré par heure, SL 3,5 ATR H1, TP 2 R, BE 0,5 R, sortie 15h-17h."
 
 //+------------------------------------------------------------------+
 //| Enumerations                                                      |
@@ -84,10 +83,10 @@ input group "=== Stop loss / Take profit / Break-even ==="
 input ENUM_FX_PROFILE   InpProfile          = FX_PROFILE_WINRATE; // Profil de sortie
 input int               InpHoldUntilHour    = 17;                // Profil taux de réussite : position perdante gardée jusqu'à (heure)
 input double            InpExitMinProfitR   = 0.05;              // Profil taux de réussite : sortie dès que le gain atteint +R
-input double            InpSL_ATR           = 3.0;               // Stop loss = ATR x (définit 1 R)
+input double            InpSL_ATR           = 3.5;               // Stop loss = ATR x (définit 1 R)
 input double            InpTP_R             = 2.0;               // Take profit = R x (profil personnalisé)
 input bool              InpUseBreakEven     = true;              // Activer le break-even
-input double            InpBE_TriggerR      = 0.7;               // Break-even déclenché à +R (profil personnalisé)
+input double            InpBE_TriggerR      = 0.5;               // Break-even déclenché à +R (profil personnalisé)
 input double            InpBE_LockR         = 0.1;               // Gain verrouillé au break-even (R)
 input bool              InpUseTrailing      = false;             // Activer le trailing stop
 input double            InpTrailStartR      = 2.0;               // Trailing actif à partir de +R
@@ -99,7 +98,7 @@ input int               InpMaxHoldHours     = 0;                 // Durée max d
 
 input group "=== Gestion du risque ==="
 input ENUM_RISK_MODE  InpRiskMode         = RISK_PCT_BALANCE;  // Calcul du lot
-input double          InpRiskPercent      = 0.25;              // Risque de base par trade (%) - x1,5 le matin, x0,5 après 13h
+input double          InpRiskPercent      = 0.3;               // Risque de base par trade (%) - x1,5 le matin, x0,5 après 13h
 input double          InpFixedLot         = 0.01;              // Lot fixe (mode lot fixe)
 input double          InpMaxLot           = 50.0;              // Lot maximum
 input double          InpMinLotMaxRiskPct = 2.0;               // Risque max (%) toléré si le lot minimum est imposé
@@ -114,7 +113,7 @@ input bool            InpUseAdaptiveRisk  = false;             // Risque adaptat
 input int             InpAdaptiveWindow   = 60;                // Nombre de trades mémorisés
 input double          InpAdaptiveFactor   = 0.5;               // Multiplicateur de risque si le bilan récent est négatif
 input int             InpMaxConsecLosses  = 0;                 // Pertes consécutives max par jour (0 = off)
-input double          InpMaxVolatility    = 1.0;               // Filtre volatilité : pas de trade si ATR H1 > x fois sa moyenne 10 jours (0 = off)
+input double          InpMaxVolatility    = 0.9;               // Filtre volatilité : pas de trade si ATR H1 > x fois sa moyenne 10 jours (0 = off)
 input int             InpMaxSpreadPoints  = 20;                // Spread max en points (0 = automatique)
 input double          InpMaxSpreadPctSL   = 10.0;              // Spread max en % de la distance du SL
 input int             InpSlippagePoints   = 10;                // Glissement max (points)
@@ -136,11 +135,12 @@ input bool            InpNewsHighOnly     = true;              // Uniquement les
 input string          InpNewsCurrencies   = "";                // Devises surveillées (vide = devises du symbole)
 input bool            InpCloseBeforeNews  = false;             // Fermer une position gardée en perte 10 min avant une news (déconseillé)
 
-input group "=== Intelligence de marché (v7, EURUSD seul) ==="
+input group "=== Intelligence de marché (v8, EURUSD seul) ==="
 input bool            InpSkipMonday       = true;              // Pas de trade le lundi (jour le plus faible, 13 années sur 19)
 input bool            InpSkipFOMC         = true;              // Pas de trade le jour d'une décision de la Fed (FOMC)
 input bool            InpSkipMonthEnd     = true;              // Pas de trade le dernier jour ouvré du mois
 input double          InpMinBollinger     = 1.5;               // Vente si le prix est > x écarts-types au-dessus de sa moyenne 20 M5 (0 = off)
+input double          InpMinAsiaRangeATR  = 1.4;               // Nuit asiatique (7h avant la fenêtre) : amplitude >= x ATR H1 (0 = off)
 input bool            InpHourWeighting    = true;              // Risque pondéré selon l'heure (x1,5 de 8h à 11h, x0,5 après 13h)
 
 input group "=== Affichage ==="
@@ -1699,6 +1699,41 @@ bool BollingerZ(const int shift, double &z)
    return true;
   }
 
+// amplitude de la nuit asiatique du jour : clôtures M5 des 7 heures qui précèdent la fenêtre d'entrée
+// (1h-8h serveur par défaut), rapportée à l'ATR H1. Faux si les bougies manquent.
+bool AsiaRangeATR(const datetime barTime, const double atr, double &rangeATR)
+  {
+   rangeATR = 0.0;
+   if(atr <= 0.0)
+      return false;
+   int offset = (InpTimeBase == TIME_BASE_GMT) ? ServerGMTOffset(barTime) : 0;
+   datetime day = DayStart(barTime);
+   datetime from = day + (datetime)((InpSessionStart - 7) * 3600 + offset);
+   datetime to = day + (datetime)(InpSessionStart * 3600 + offset);
+   double hi = 0.0, lo = 0.0;
+   int n = 0;
+   for(int k = 1; k < 500; k++)
+     {
+      datetime t = iTime(_Symbol, PERIOD_M5, k);
+      if(t == 0 || t < from)
+         break;
+      if(t >= to)
+         continue;
+      double c = iClose(_Symbol, PERIOD_M5, k);
+      if(c <= 0.0)
+         continue;
+      if(n == 0 || c > hi)
+         hi = c;
+      if(n == 0 || c < lo)
+         lo = c;
+      n++;
+     }
+   if(n < 12)
+      return false;
+   rangeATR = (hi - lo) / atr;
+   return true;
+  }
+
 //+------------------------------------------------------------------+
 //| Signal de la stratégie (bougies clôturées uniquement)             |
 //+------------------------------------------------------------------+
@@ -1777,6 +1812,21 @@ bool GetSignal(const datetime entryBarTime, int &dir, double &slDist, string &wh
      {
       why = "Journée écartée : " + block;
       return true;
+     }
+   // nuit asiatique trop calme : le marché manque d'élan, les ventes européennes rapportent peu
+   if(InpMinAsiaRangeATR > 0.0)
+     {
+      double ar = 0.0;
+      if(!AsiaRangeATR(entryBarTime, atr, ar))
+        {
+         why = "Nuit asiatique : données M5 insuffisantes";
+         return true;
+        }
+      if(ar < InpMinAsiaRangeATR)
+        {
+         why = StringFormat("Journée écartée : nuit asiatique trop calme (%.1f x ATR < %.1f)", ar, InpMinAsiaRangeATR);
+         return true;
+        }
      }
 
    ENUM_SYMBOL_TRADE_MODE mode = (ENUM_SYMBOL_TRADE_MODE)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE);
@@ -1872,37 +1922,37 @@ string ForecastText(const datetime now)
    int h = SessionHour(now);
    if(!HourInWindow(h, InpSessionStart, InpSessionEnd))
       return "aucun avantage statistique mesuré à cette heure (19 ans de données MT5) - le robot observe";
-   // statistiques du robot v7 sur 19 ans de données MT5 réelles (EURUSD 2007-2025), par heure d'entrée
+   // statistiques du robot v8 sur 19 ans de données MT5 réelles (EURUSD 2007-2025), par heure d'entrée
    double win = 0.0, er = 0.0;
    switch(h)
      {
       case 8:
-         win = 70.0;
-         er = 0.168;
+         win = 74.0;
+         er = 0.141;
          break;
       case 9:
-         win = 67.0;
-         er = 0.082;
+         win = 73.0;
+         er = 0.084;
          break;
       case 10:
-         win = 70.0;
-         er = 0.089;
+         win = 75.0;
+         er = 0.091;
          break;
       case 11:
-         win = 77.0;
-         er = 0.110;
+         win = 81.0;
+         er = 0.116;
          break;
       case 12:
-         win = 75.0;
-         er = 0.045;
+         win = 78.0;
+         er = 0.052;
          break;
       case 13:
-         win = 77.0;
-         er = 0.031;
+         win = 78.0;
+         er = 0.034;
          break;
       case 14:
-         win = 83.0;
-         er = 0.021;
+         win = 84.0;
+         er = 0.023;
          break;
       default:
          break;
@@ -1910,6 +1960,37 @@ string ForecastText(const datetime now)
    if(win <= 0.0)
       return "fenêtre ouverte (heure hors statistiques de référence)";
    return StringFormat("vente favorable - sur 19 ans, les entrées de %dh ont gagné %.0f%% du temps (%+.3f R/trade)", h, win, er);
+  }
+
+// liste des contrôles effectués avant chaque trade (OK = condition remplie)
+string CheckItem(const string name, const bool ok, int &passed, int &total)
+  {
+   total++;
+   if(ok)
+      passed++;
+   return name + (ok ? " OK" : " NON");
+  }
+
+string ChecklistText(const datetime now, const double prevATR, const bool asiaKnown, const double asiaR, const double atr, const double atrL)
+  {
+   int passed = 0, total = 0;
+   string c = "";
+   c += CheckItem("fenêtre", HourInWindow(SessionHour(now), InpSessionStart, InpSessionEnd), passed, total) + " | ";
+   c += CheckItem("calendrier", StringLen(CalendarDayBlock(now)) == 0, passed, total) + " | ";
+   c += CheckItem(StringFormat("veille %.1f", prevATR), InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR, passed, total) + " | ";
+   c += CheckItem(asiaKnown ? StringFormat("nuit Asie %.1f", asiaR) : "nuit Asie ?", InpMinAsiaRangeATR <= 0.0 || (asiaKnown && asiaR >= InpMinAsiaRangeATR), passed, total) + " | ";
+   c += CheckItem(StringFormat("volatilité %.2f", atrL > 0.0 ? atr / atrL : 0.0), InpMaxVolatility <= 0.0 || (atrL > 0.0 && atr <= InpMaxVolatility * atrL), passed, total) + " | ";
+   string newsInfo = "";
+   c += CheckItem("news", !IsNewsBlackout(now, newsInfo), passed, total) + " | ";
+   MqlTick tk;
+   double spread = (SymbolInfoTick(_Symbol, tk) ? tk.ask - tk.bid : 0.0);
+   c += CheckItem("spread", InpMaxSpreadPoints <= 0 || spread <= InpMaxSpreadPoints * SymPoint() + SymPoint() * 0.5, passed, total) + " | ";
+   c += CheckItem(StringFormat("RSI %.0f", g_lastRSI), g_lastRSI > InpRSIPullback, passed, total) + " | ";
+   double z = 0.0;
+   bool zOK = BollingerZ(1, z);
+   c += CheckItem(StringFormat("Bollinger %+.1f", z), InpMinBollinger <= 0.0 || (zOK && z > InpMinBollinger), passed, total) + " | ";
+   c += CheckItem("positions", CountMyPositions() < InpMaxPositions, passed, total);
+   return StringFormat("Contrôles avant trade (%d/%d) : ", passed, total) + c + "\n";
   }
 
 string MarketAnalysisText(const datetime now)
@@ -1971,7 +2052,10 @@ string MarketAnalysisText(const datetime now)
    s += "Indicateurs : " + ind + "\n";
 
    string calBlock = CalendarDayBlock(now);
-   bool dayOK = (InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR) && StringLen(calBlock) == 0;
+   double asiaR = 0.0;
+   bool asiaKnown = (SessionHour(now) >= InpSessionStart && AsiaRangeATR(now, atr, asiaR));
+   bool asiaOK = (InpMinAsiaRangeATR <= 0.0 || !asiaKnown || asiaR >= InpMinAsiaRangeATR);
+   bool dayOK = (InpMinPrevRangeATR <= 0.0 || prevATR >= InpMinPrevRangeATR) && StringLen(calBlock) == 0 && asiaOK;
    s += "Filtre du jour : " + (dayOK ? "FAVORABLE" : "défavorable (pas de trade aujourd'hui)") +
         StringFormat(" - amplitude de la veille %.1f x ATR (seuil %.1f)", prevATR, InpMinPrevRangeATR) +
         (StringLen(calBlock) > 0 ? " - " + calBlock : "") + "\n";
@@ -1987,8 +2071,10 @@ string MarketAnalysisText(const datetime now)
       if(IsNewsBlackout(now, newsInfo))
          forecast = "pause pendant l'annonce (" + newsInfo + ") - " + forecast;
    s += "Prévision : " + forecast + "\n";
+   s += ChecklistText(now, prevATR, asiaKnown, asiaR, atr, atrL);
    return s;
   }
+
 
 //+------------------------------------------------------------------+
 //| Panneau d'information                                             |
@@ -2157,14 +2243,14 @@ int OnInit()
    if(InpProfile == FX_PROFILE_WINRATE)
      {
       g_tpR = 2.0;
-      g_beR = 0.7;
+      g_beR = 0.5;
       g_condExit = true;
      }
    else
       if(InpProfile == FX_PROFILE_RETURN)
         {
          g_tpR = 2.0;
-         g_beR = 0.7;
+         g_beR = 0.5;
          g_condExit = false;
         }
       else
