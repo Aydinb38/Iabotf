@@ -398,7 +398,7 @@ def s_adaptive(check):
         m = re.search(r"IABot: (VENTE|ACHAT) .*risque ([\d.]+)%\)", line)
         if m:
             exp = P["risk"] * (0.5 if reduced else 1.0)
-            if abs(float(m.group(2)) - exp) < 1e-6: ok += 1
+            if abs(float(m.group(2)) - exp) < 0.0051: ok += 1   # journal à 2 décimales (0,125 % s'affiche 0.12 %)
             else: bad += 1
     check(n_red > 5 and n_norm > 5, f"bascule en mode réduit ({n_red} fois) et retour à la normale ({n_norm} fois)")
     check(ok > 100 and bad == 0, f"chaque entrée utilise le bon risque ({ok} entrées conformes, {bad} écarts)")
