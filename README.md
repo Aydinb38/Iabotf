@@ -1,4 +1,4 @@
-# IABot EURUSD v10 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
+# IABot EURUSD v10.1 : robot de trading autonome 100 % EURUSD (MetaTrader 5, M5)
 
 Expert Advisor **entièrement automatique**, qui travaille **uniquement sur EURUSD**. Il ne lit **aucune autre paire** :
 un seul graphique et rien d'autre à configurer. Une fois lancé, il fait tout seul :
@@ -271,6 +271,17 @@ pour information, ce n'est plus un filtre)*
     courbe de capital sont les bons repères.
   - Les entrées de 14 h ne misent que 0,2 fois la mise normale : leur résultat pèse très peu.
 - **Compte** : ECN à bas coûts (spread + commission ≤ 1 pip sur EURUSD). Le robot fait environ 650 trades par an.
+
+**Comment savoir si le robot est actif :**
+1. Le bouton **« Trading Algo »** de la barre d'outils doit être **vert** (rouge = robot bloqué).
+2. En haut à droite du graphique, le nom **IABot_EURUSD** doit apparaître avec un **chapeau bleu** (gris = trading
+   interdit : faites F7 → onglet « Commun » → cochez « Autoriser le trading algorithmique »).
+3. Dans le panneau, la ligne **« Drawdown »** doit être faible (quelques %) et la ligne **« Statut »** doit changer toutes
+   les 5 minutes. Si elle affiche « ARRÊT : drawdown max atteint », mettez une fois le paramètre **« Réarmer le robot »**
+   sur `true`. La v10.1 corrige automatiquement ce cas au démarrage (sommet d'equity mémorisé d'un ancien dépôt).
+4. Les trades apparaissent dans **Boîte à outils → Trade** et sur le graphique. Le robot ne trade que du **mardi au
+   vendredi, de 8 h à 15 h, heure du serveur** (soit 7 h-14 h à Paris), et pas tous les jours : les autres jours, les
+   10 contrôles ne sont pas réunis.
 
 **Si quelque chose ne fonctionne pas**, envoyez-moi :
 - le message de l'onglet **Erreurs** de MetaEditor (compilation) ;

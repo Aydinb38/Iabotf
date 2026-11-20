@@ -27,7 +27,7 @@
 //|  MACD, Bollinger, RSI, pivots, volatilité, calendrier MT5.       |
 //+------------------------------------------------------------------+
 #property copyright   "IABot"
-#property version     "10.00"
+#property version     "10.10"
 #property description "Robot autonome 100 % EURUSD (M5) : séance européenne 8h-15h, jusqu'à 10 trades/jour,"
 #property description "rebonds étirés (RSI + Bollinger), 10 contrôles avant chaque trade (calendrier, veille, volatilité,"
 #property description "news...), mise pondérée selon l'heure, SL 3 ATR H1, TP 2 R, BE 0,7 R, 70 % encaissés à +1 R, sortie 15h-17h."
@@ -1515,11 +1515,36 @@ string NextNewsText(const datetime now)
 //+------------------------------------------------------------------+
 //| Protections du capital                                            |
 //+------------------------------------------------------------------+
+// sommet d'equity mémorisé. Un sommet incohérent (le compte a baissé de plus que le drawdown max alors que le robot
+// ne tournait pas : dépôt modifié, retrait, compte démo recréé) est réinitialisé, sinon le robot s'arrêterait à tort.
+bool g_peakReady = false;
+
+void InitPeakEquity()
+  {
+   double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(eq <= 0.0)
+      return;                         // compte pas encore synchronisé : nouvel essai au prochain tick
+   double stored = GVGet("peak", 0.0);
+   if(!g_ddHalt && InpMaxDrawdownPct > 0.0 && stored > 0.0 && CountMyPositions() == 0 &&
+      (stored - eq) / stored * 100.0 >= InpMaxDrawdownPct)
+     {
+      PrintFormat("IABot: sommet d'equity mémorisé (%s) incohérent avec le compte (%s) - dépôt, retrait ou compte modifié : sommet réinitialisé",
+                  FmtMoney(stored), FmtMoney(eq));
+      stored = eq;
+     }
+   g_peakEquity = MathMax(stored, eq);
+   g_peakSaved = g_peakEquity;
+   GVSet("peak", g_peakEquity);
+   g_peakReady = true;
+  }
+
 void UpdateProtections()
   {
    double eq = AccountInfoDouble(ACCOUNT_EQUITY);
    if(eq <= 0.0)
       return;
+   if(!g_peakReady)
+      InitPeakEquity();
 
    // sommet d'equity (persistant)
    if(eq > g_peakEquity)
@@ -2387,9 +2412,7 @@ int OnInit()
       Print("IABot: protection drawdown réarmée");
      }
    g_ddHalt = (GVGet("halt", 0.0) > 0.5);
-   g_peakEquity = MathMax(GVGet("peak", 0.0), AccountInfoDouble(ACCOUNT_EQUITY));
-   g_peakSaved = g_peakEquity;
-   GVSet("peak", g_peakEquity);
+   InitPeakEquity();
    g_dayStart = 0;
    UpdateDayAnchor();
    ComputeTodayStats();
